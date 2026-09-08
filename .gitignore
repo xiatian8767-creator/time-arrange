@@ -1,0 +1,9 @@
+# Codex 验证产生的工具、构建中间物、截图、日志和模拟器数据
+test/
+tests/
+
+# 可重新生成的交付物与本地签名
+dist/
+signing/
+*.log
+local.properties
