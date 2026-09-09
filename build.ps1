@@ -24,7 +24,7 @@ New-Item -ItemType Directory -Force -Path $out,$classes,$dex | Out-Null
 $res=Join-Path $out 'resources.zip'
 $unsigned=Join-Path $out 'unsigned.apk'
 $aligned=Join-Path $out 'aligned.apk'
-$apk=Join-Path $out $(if($DebugBuild){'StarTimetable-1.0.0-debug.apk'}else{'StarTimetable-1.0.0.apk'})
+$apk=Join-Path $out $(if($DebugBuild){'StarTimetable-1.0.1-debug.apk'}else{'StarTimetable-1.0.1.apk'})
 Run (Join-Path $BuildTools 'aapt2.exe') @('compile','--dir',(Join-Path $source 'res'),'-o',$res)
 $linkArgs=@('link','-o',$unsigned,'-I',$Platform,'--manifest',(Join-Path $source 'AndroidManifest.xml'),'-A',(Join-Path $source 'assets'),'--auto-add-overlay',$res)
 if($DebugBuild){$linkArgs+='--debug-mode'}
