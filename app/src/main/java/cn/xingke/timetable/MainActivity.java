@@ -26,22 +26,25 @@ public class MainActivity extends Activity {
     private WebView web;
     private SharedPreferences prefs;
     private String pendingExport;
+    private boolean openTodos;
     private static final int EXPORT=101, IMPORT=102;
     private static final String HOME="https://appassets.androidplatform.net/assets/index.html";
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         prefs=getSharedPreferences("star_schedule", MODE_PRIVATE);
+        openTodos="cn.xingke.timetable.OPEN_TODOS".equals(getIntent().getAction());
+        TodoReminders.channel(this);
         if(saved!=null)pendingExport=saved.getString("pendingExport");
         FrameLayout frame=new FrameLayout(this);
-        frame.setBackgroundColor(Color.rgb(244,246,252));
+        frame.setBackgroundColor(Color.rgb(247,245,239));
         web=new WebView(this);
         WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0);
         frame.addView(web,new FrameLayout.LayoutParams(-1,-1));
         setContentView(frame);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | (Build.VERSION.SDK_INT>=26?View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));
         if(Build.VERSION.SDK_INT>=35){frame.setOnApplyWindowInsetsListener((v,insets)->{android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());v.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets;});}
-        web.setBackgroundColor(Color.rgb(244,246,252));
+        web.setBackgroundColor(Color.rgb(247,245,239));
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(false);
         web.getSettings().setAllowFileAccess(false);
@@ -50,6 +53,7 @@ public class MainActivity extends Activity {
         web.getSettings().setSupportMultipleWindows(false);
         web.addJavascriptInterface(new LocalBridge(),"Android");
         web.setWebViewClient(new WebViewClient(){
+            @Override public void onPageFinished(WebView view,String url){if(openTodos){openTodos=false;view.evaluateJavascript("window.showPage && window.showPage('todos')",null);}}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return !HOME.equals(request.getUrl().toString());}
             @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !HOME.equals(url);}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
@@ -67,7 +71,26 @@ public class MainActivity extends Activity {
     }
     public class LocalBridge {
         @JavascriptInterface public String loadData(){return prefs.getString("data","");}
-        @JavascriptInterface public boolean saveData(String json){if(json==null || json.length()>1024*1024)return false;return prefs.edit().putString("data",json).commit();}
+        @JavascriptInterface public boolean saveData(String json){
+            if(json==null || json.length()>1024*1024)return false;
+            try{new JSONObject(json);}catch(Exception error){return false;}
+            boolean saved=prefs.edit().putString("data",json).commit();
+            if(saved)runOnUiThread(()->TodoReminders.reconcile(MainActivity.this,true));
+            return saved;
+        }
+        @JavascriptInterface public boolean notificationsEnabled(){return TodoReminders.enabled(MainActivity.this);}
+        @JavascriptInterface public boolean exactRemindersEnabled(){return TodoReminders.exact(MainActivity.this);}
+        @JavascriptInterface public void requestNotificationPermission(){runOnUiThread(()->{
+            if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},103);
+        });}
+        @JavascriptInterface public void openNotificationSettings(){runOnUiThread(()->{
+            Intent intent=Build.VERSION.SDK_INT>=26?new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()):new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));
+            try{startActivity(intent);}catch(Exception error){notice("请在手机设置中开启星课表通知");}
+        });}
+        @JavascriptInterface public void requestExactReminders(){runOnUiThread(()->{
+            if(Build.VERSION.SDK_INT>=31&&!TodoReminders.exact(MainActivity.this))try{startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())));}catch(Exception error){notice("请在手机设置中允许星课表设置闹钟和提醒");}
+        });}
         @JavascriptInterface public void exportBackup(String json){runOnUiThread(()->{pendingExport=json;Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/json");intent.putExtra(Intent.EXTRA_TITLE,"星课表备份.json");try{startActivityForResult(intent,EXPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
         @JavascriptInterface public void openBackup(){runOnUiThread(()->{Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");try{startActivityForResult(intent,IMPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
     }
@@ -84,6 +107,8 @@ public class MainActivity extends Activity {
     }
     @Override public void onBackPressed(){web.evaluateJavascript("window.handleBack && window.handleBack()",value->{if(!"true".equals(value))super.onBackPressed();});}
     @Override protected void onPause(){super.onPause();web.onPause();}
-    @Override protected void onResume(){super.onResume();if(web!=null){web.onResume();web.evaluateJavascript("typeof tick === 'function' && tick()",null);}}
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);}
+    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();",null);}}
     @Override protected void onDestroy(){if(web!=null){web.removeJavascriptInterface("Android");web.destroy();}super.onDestroy();}
 }
