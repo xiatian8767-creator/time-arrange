@@ -2,6 +2,9 @@
 const C=StarCore,$=id=>document.getElementById(id),DAYS=['一','二','三','四','五','六','日'],COLORS=['#6b9cf4','#eb91ad','#83bba6','#a391d7','#e8b16b','#7dbacb'];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,9);
+let partner=null,viewPartner=false;
+try{const raw=window.Android?Android.loadPartner():localStorage.getItem('star-partner');if(raw)partner=C.scheduleOnly(JSON.parse(raw));}catch(e){/* Preserve unreadable partner data until explicitly replaced. */}
+const displayedSchedule=()=>viewPartner&&partner?partner:state;
 let state,weekOffset=0,currentLayout,lastDate='',timer,returnFocus=null,loadingError=false,activePage='schedule',todoFilter='pending';
 
 try{const raw=window.Android?Android.loadData():localStorage.getItem('star-schedule');state=raw?C.upgrade(JSON.parse(raw)):C.defaults();if(raw&&raw!==JSON.stringify(state)){if(window.Android){if(!Android.saveData(JSON.stringify(state)))throw Error('保存失败');}else localStorage.setItem('star-schedule',JSON.stringify(state));}}catch(e){state=C.defaults();loadingError=true;}
@@ -23,8 +26,15 @@ $('close').onclick=closeModal;$('modal').onclick=e=>{if(e.target===$('modal'))cl
 document.addEventListener('keydown',e=>{if($('modal').hidden)return;if(e.key==='Escape')closeModal();if(e.key==='Tab'){const els=[...$('modal').querySelectorAll('button,input,select,textarea')].filter(el=>!el.disabled&&el.offsetParent!==null);if(!els.length)return;if(e.shiftKey&&document.activeElement===els[0]){e.preventDefault();els[els.length-1].focus();}else if(!e.shiftKey&&document.activeElement===els[els.length-1]){e.preventDefault();els[0].focus();}}});
 
 const dateKey=d=>d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate();
-function courseSegments(a,b){const result=[];let start=null;for(let i=a;i<=b;i++){if(state.slots[i].kind==='activity'){if(start!==null){result.push([start,i-1]);start=null;}}else if(start===null)start=i;}if(start!==null)result.push([start,b]);return result;}
+function courseSegments(a,b){const state=displayedSchedule();const result=[];let start=null;for(let i=a;i<=b;i++){if(state.slots[i].kind==='activity'){if(start!==null){result.push([start,i-1]);start=null;}}else if(start===null)start=i;}if(start!==null)result.push([start,b]);return result;}
 function renderSchedule(){
+  const state=displayedSchedule();
+  $('schedule-toggle').hidden=!partner;
+  $('schedule-toggle').style.setProperty('--progress',viewPartner?1:0);
+  ['schedule-mine','schedule-partner'].forEach((id,i)=>{const selected=Boolean(i)===viewPartner;$(id).classList.toggle('selected',selected);$(id).setAttribute('aria-pressed',String(selected));});
+  document.querySelector('.page-actions').hidden=viewPartner;
+  $('add').hidden=viewPartner;$('times').hidden=viewPartner;
+  document.querySelector('.legend').hidden=viewPartner;
   const now=new Date(),monday=C.monday(now);monday.setDate(monday.getDate()+weekOffset*7);const sunday=new Date(monday);sunday.setDate(sunday.getDate()+6);
   $('week-title').textContent=(monday.getMonth()+1)+'月'+monday.getDate()+'日 — '+(sunday.getMonth()+1)+'月'+sunday.getDate()+'日';
   $('week-subtitle').textContent=monday.getFullYear()+' · '+(weekOffset===0?'本周':weekOffset===-1?'上周':weekOffset===1?'下周':'每周重复课表');
@@ -35,18 +45,18 @@ function renderSchedule(){
   let html=rows.map(r=>r.kind==='activity'?'<div class="activity-row" style="top:'+r.top+'px;height:'+r.height+'px" aria-label="'+esc(r.label||'活动时间')+'"></div>':'').join('');
   for(let day=1;day<=7;day++){
     html+='<div class="day-column '+(weekOffset===0&&day===(now.getDay()+6)%7+1?'is-today':'')+'" style="left:'+((day-1)*100/7)+'%;width:'+(100/7)+'%"></div>';
-    rows.forEach((r,i)=>{if(r.kind!=='activity')html+='<button class="empty-cell" data-day="'+day+'" data-slot="'+i+'" style="left:'+((day-1)*100/7)+'%;width:'+(100/7)+'%;top:'+r.top+'px;height:'+r.height+'px" aria-label="添加周'+DAYS[day-1]+'第'+r.lesson+'节课程"></button>';});
+    rows.forEach((r,i)=>{if(r.kind!=='activity'&&!viewPartner)html+='<button class="empty-cell" data-day="'+day+'" data-slot="'+i+'" style="left:'+((day-1)*100/7)+'%;width:'+(100/7)+'%;top:'+r.top+'px;height:'+r.height+'px" aria-label="添加周'+DAYS[day-1]+'第'+r.lesson+'节课程"></button>';});
   }
   for(const c of state.courses){
     const a=state.slots.findIndex(s=>s.id===c.start),b=state.slots.findIndex(s=>s.id===c.end),segments=courseSegments(a,b);
-    segments.forEach((segment,index)=>{const first=rows[segment[0]],last=rows[segment[1]];html+='<button class="course '+(index?'continuation':'')+'" data-id="'+esc(c.id)+'" style="left:calc('+((c.day-1)*100/7)+'% + 2px);width:calc('+(100/7)+'% - 4px);top:'+first.top+'px;height:'+(last.top+last.height-first.top)+'px;background:'+c.color+'" aria-label="'+esc('编辑 '+c.name+' 周'+DAYS[c.day-1]+' 第'+first.lesson+'至'+last.lesson+'节')+'"><strong>'+esc(c.name)+'</strong>'+(c.room?'<small>'+esc(c.room)+'</small>':'')+'</button>';});
+    segments.forEach((segment,index)=>{const first=rows[segment[0]],last=rows[segment[1]];html+='<button class="course '+(index?'continuation':'')+'" data-id="'+esc(c.id)+'" style="left:calc('+((c.day-1)*100/7)+'% + 2px);width:calc('+(100/7)+'% - 4px);top:'+first.top+'px;height:'+(last.top+last.height-first.top)+'px;background:'+c.color+'" aria-label="'+esc((viewPartner?'查看 ':'编辑 ')+c.name+' 周'+DAYS[c.day-1]+' 第'+first.lesson+'至'+last.lesson+'节')+'"><strong>'+esc(c.name)+'</strong>'+(c.room?'<small>'+esc(c.room)+'</small>':'')+'</button>';});
   }
   $('grid').innerHTML=html;document.querySelectorAll('.now-line').forEach(el=>el.remove());const line=document.createElement('div');line.className='now-line';line.innerHTML='<span class="time-label"></span><span class="time-star">★</span>';$('schedule').appendChild(line);lastDate=dateKey(now);tick();
 }
 function render(){renderSchedule();renderTodos();}
-function tick(){const now=new Date();if(lastDate!==dateKey(now)){renderSchedule();return;}const stat=C.status(state,now);$('now-label').textContent=stat.title;$('now-detail').textContent=stat.detail;const line=document.querySelector('.now-line');if(!line)return;line.hidden=weekOffset!==0;if(weekOffset!==0)return;const min=now.getHours()*60+now.getMinutes()+now.getSeconds()/60,pos=C.position(min,currentLayout.rows);line.style.top=pos.y+'px';line.querySelector('.time-star').style.left=(((now.getDay()+6)%7+.5)*100/7)+'%';const hh=String(now.getHours()).padStart(2,'0'),mm=String(now.getMinutes()).padStart(2,'0');line.querySelector('.time-label').textContent=hh+':'+mm;line.setAttribute('aria-label','现在 '+hh+':'+mm+' '+pos.label);}
+function tick(){const now=new Date();if(lastDate!==dateKey(now)){renderSchedule();return;}const stat=C.status(displayedSchedule(),now);$('now-label').textContent=stat.title;$('now-detail').textContent=stat.detail;const line=document.querySelector('.now-line');if(!line)return;line.hidden=weekOffset!==0;if(weekOffset!==0)return;const min=now.getHours()*60+now.getMinutes()+now.getSeconds()/60,pos=C.position(min,currentLayout.rows);line.style.top=pos.y+'px';line.querySelector('.time-star').style.left=(((now.getDay()+6)%7+.5)*100/7)+'%';const hh=String(now.getHours()).padStart(2,'0'),mm=String(now.getMinutes()).padStart(2,'0');line.querySelector('.time-label').textContent=hh+':'+mm;line.setAttribute('aria-label','现在 '+hh+':'+mm+' '+pos.label);}
 
-$('grid').onclick=e=>{const card=e.target.closest('.course');if(card){editCourse(card.dataset.id);return;}const cell=e.target.closest('.empty-cell');if(cell)editCourse(null,+cell.dataset.day,+cell.dataset.slot);};
+$('grid').onclick=e=>{if(viewPartner){const card=e.target.closest('.course');if(card){const c=partner.courses.find(x=>x.id===card.dataset.id);showModal(c.name,'<p class="hint">搭子课表 · 只读</p><p>'+esc(c.room||'未填写地点')+'</p><p class="partner-note">'+esc(c.note||'无备注')+'</p>');}return;}const card=e.target.closest('.course');if(card){editCourse(card.dataset.id);return;}const cell=e.target.closest('.empty-cell');if(cell)editCourse(null,+cell.dataset.day,+cell.dataset.slot);};
 $('prev').onclick=()=>{weekOffset--;renderSchedule();};$('next').onclick=()=>{weekOffset++;renderSchedule();};$('today').onclick=()=>{weekOffset=0;renderSchedule();setTimeout(()=>{const line=document.querySelector('.now-line');if(line)line.scrollIntoView({behavior:'smooth',block:'center'});},30);};
 $('add').onclick=()=>editCourse();$('times').onclick=editTimes;$('settings').onclick=settings;$('nav-schedule').onclick=()=>showPage('schedule');$('nav-todos').onclick=()=>showPage('todos');
 
@@ -99,9 +109,57 @@ function editTodo(id=null){
 }
 
 function settings(){
-  showModal('设置与备份','<button class="setting-action" id="settings-times">作息时间<small>自定义课程和活动时间段</small></button><button class="setting-action" id="export">导出全部数据<small>将课表、待办和时间保存为本地 JSON 文件</small></button><button class="setting-action" id="import">导入备份<small>从手机文件恢复，将替换当前全部数据</small></button><button class="setting-action" id="reset">恢复默认课表<small>恢复默认课程和作息，不删除事务待办</small></button><p class="hint">数据只保存在本机，不需要账号和网络。卸载应用会删除数据，请先导出备份。</p><p class="hint">默认作息采用参考表中的第 1–10 节、大课间、午休和晚餐。</p><div class="version">星课表 1.1.0 · 课表与待办</div>');
+  showModal('设置与备份','<button class="setting-action" id="settings-times">作息时间<small>自定义课程和活动时间段</small></button><button class="setting-action" id="export">导出全部数据<small>将课表、待办和时间保存为本地 JSON 文件</small></button><button class="setting-action" id="import">导入备份<small>从手机文件恢复，将替换当前全部数据</small></button><button class="setting-action" id="reset">恢复默认课表<small>恢复默认课程和作息，不删除事务待办</small></button><p class="hint">数据只保存在本机，不需要账号和网络。卸载应用会删除数据，请先导出备份。</p><p class="hint">默认作息采用参考表中的第 1–10 节、大课间、午休和晚餐。</p><div class="version">星课表 1.2.4 · 课表与待办</div>');
   $('settings-times').onclick=editTimes;$('export').onclick=exportData;$('import').onclick=()=>{if(window.Android)Android.openBackup();else $('import-file').click();};$('reset').onclick=()=>confirmAction('恢复默认课表？','当前课程和作息将被替换，事务待办会保留。',()=>{const fresh=C.defaults();save({...fresh,todos:state.todos});notify('已恢复默认课表');});
 }
+function partnerSettings(){
+  showModal('搭子课表','<button class="setting-action" id="partner-import">配置导入<small>导入搭子的 JSON 课表；只读取课程和作息</small></button><button class="setting-action" id="partner-online">联网申请<small>后续版本开放，当前无需登录</small></button><button class="setting-action" id="partner-export">导出我的课表配置<small>发给搭子使用，不包含待办</small></button>'+(partner?'<button class="setting-action" id="partner-remove">移除搭子课表<small>仅删除本机保存的搭子课表</small></button>':'')+'<p class="hint">支持星课表 1.0 / 1.1 备份和 1.2 课表配置。导入的是静态副本，更新需重新导入。完整备份可能包含待办，请优先分享“我的课表配置”。</p>');
+  $('partner-import').onclick=()=>{if(window.Android)Android.openPartnerBackup();else $('partner-file').click();};
+  $('partner-online').onclick=()=>notify('联网申请将在后续版本开放');
+  $('partner-export').onclick=()=>{const raw=JSON.stringify(C.scheduleOnly(state),null,2);if(window.Android)Android.exportBackup(raw);else downloadJson(raw,'星课表-我的课表配置.json');};
+  if(partner)$('partner-remove').onclick=()=>confirmAction('移除搭子课表？','自己的课表和待办不受影响。',()=>{persistPartner(null);viewPartner=false;renderSchedule();notify('搭子课表已移除');});
+}
+function persistPartner(next){
+  const raw=next?JSON.stringify(next):'';
+  if(window.Android){if(!Android.savePartner(raw))throw Error('搭子课表保存失败');}
+  else if(next)localStorage.setItem('star-partner',raw);else localStorage.removeItem('star-partner');
+  partner=next;
+}
+window.importPartner=raw=>{try{
+  if(new TextEncoder().encode(raw).length>1024*1024)throw Error('文件不能超过 1 MB');
+  const next=C.scheduleOnly(JSON.parse(raw));
+  confirmAction(partner?'替换搭子课表？':'导入搭子课表？','包含 '+next.courses.length+' 门课程，将独立保存课程和作息，不导入待办。',()=>{persistPartner(next);viewPartner=true;renderSchedule();notify('搭子课表已导入');});
+}catch(e){notify('导入失败：'+(e instanceof SyntaxError?'不是有效的 JSON 文件':e.message));}};
+$('partner-manage').onclick=partnerSettings;
+function selectSchedule(next){
+  if(next&&!partner){partnerSettings();return;}
+  viewPartner=next;renderSchedule();
+}
+$('schedule-mine').onclick=()=>selectSchedule(false);
+$('schedule-partner').onclick=()=>selectSchedule(true);
+const scheduleToggle=$('schedule-toggle');
+let scheduleDrag=null,suppressToggleClickUntil=0;
+scheduleToggle.onpointerdown=e=>{if(!e.isPrimary||e.button!==0||!partner)return;scheduleDrag={id:e.pointerId,start:e.clientX,initial:viewPartner?1:0,progress:viewPartner?1:0,moved:false};};
+scheduleToggle.onpointermove=e=>{
+  if(!scheduleDrag||scheduleDrag.id!==e.pointerId)return;
+  const dx=e.clientX-scheduleDrag.start;
+  if(!scheduleDrag.moved&&Math.abs(dx)<5)return;
+  scheduleDrag.moved=true;scheduleToggle.setPointerCapture(e.pointerId);scheduleToggle.classList.add('dragging');
+  const travel=(scheduleToggle.clientWidth-8)/2;
+  scheduleDrag.progress=Math.max(0,Math.min(1,scheduleDrag.initial+dx/travel));
+  scheduleToggle.style.setProperty('--progress',scheduleDrag.progress);
+};
+scheduleToggle.onpointerup=e=>{
+  if(!scheduleDrag||scheduleDrag.id!==e.pointerId)return;
+  const drag=scheduleDrag;scheduleDrag=null;scheduleToggle.classList.remove('dragging');
+  if(drag.moved){suppressToggleClickUntil=Date.now()+300;selectSchedule(drag.progress>=0.5);}
+};
+function cancelScheduleDrag(){if(!scheduleDrag)return;scheduleDrag=null;scheduleToggle.classList.remove('dragging');scheduleToggle.style.setProperty('--progress',viewPartner?1:0);}
+scheduleToggle.onpointercancel=cancelScheduleDrag;scheduleToggle.onlostpointercapture=cancelScheduleDrag;
+scheduleToggle.addEventListener('click',e=>{if(Date.now()<suppressToggleClickUntil){e.preventDefault();e.stopPropagation();suppressToggleClickUntil=0;}},true);
+scheduleToggle.onkeydown=e=>{if(['ArrowLeft','ArrowDown','Home','ArrowRight','ArrowUp','End'].includes(e.key)){e.preventDefault();const next=['ArrowRight','ArrowUp','End'].includes(e.key);selectSchedule(next);$(next?'schedule-partner':'schedule-mine').focus();}};
+$('partner-file').onchange=async e=>{const file=e.target.files[0];try{if(file){if(file.size>1024*1024)throw Error('文件不能超过 1 MB');window.importPartner(await file.text());}}catch(err){notify('导入失败：'+err.message);}finally{e.target.value='';}};
+function downloadJson(raw,name){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('已生成课表配置');}
 function exportData(){const raw=JSON.stringify(state,null,2);if(window.Android){Android.exportBackup(raw);return;}const a=document.createElement('a'),url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.href=url;a.download='星课表与待办备份-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('已生成备份文件');}
 window.importBackup=raw=>{try{if(raw.length>1024*1024)throw Error('备份文件过大');const next=C.validate(JSON.parse(raw)),lessons=next.slots.filter(s=>s.kind!=='activity').length,activities=next.slots.length-lessons;confirmAction('导入这份备份？','包含 '+lessons+' 节课、'+activities+' 个活动时间段、'+next.courses.length+' 个课程块和 '+next.todos.length+' 项待办。导入将替换当前数据。',()=>{save(next);notify('数据已导入');});}catch(e){notify(e instanceof SyntaxError?'导入失败：不是有效的 JSON 备份文件':'导入失败：'+e.message);}};
 $('import-file').onchange=async e=>{const file=e.target.files[0];if(file){if(file.size>1024*1024)notify('备份文件不能超过 1 MB');else window.importBackup(await file.text());}e.target.value='';};

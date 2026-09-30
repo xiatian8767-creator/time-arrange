@@ -27,6 +27,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private String pendingExport;
     private boolean openTodos;
+    private boolean importingPartner;
     private static final int EXPORT=101, IMPORT=102;
     private static final String HOME="https://appassets.androidplatform.net/assets/index.html";
 
@@ -35,7 +36,7 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("star_schedule", MODE_PRIVATE);
         openTodos="cn.xingke.timetable.OPEN_TODOS".equals(getIntent().getAction());
         TodoReminders.channel(this);
-        if(saved!=null)pendingExport=saved.getString("pendingExport");
+        if(saved!=null){pendingExport=saved.getString("pendingExport");importingPartner=saved.getBoolean("importingPartner");}
         FrameLayout frame=new FrameLayout(this);
         frame.setBackgroundColor(Color.rgb(247,245,239));
         web=new WebView(this);
@@ -70,6 +71,13 @@ public class MainActivity extends Activity {
         web.loadUrl(HOME);
     }
     public class LocalBridge {
+        @JavascriptInterface public String loadPartner(){return prefs.getString("partner","");}
+        @JavascriptInterface public boolean savePartner(String json){
+            if(json==null||json.getBytes(StandardCharsets.UTF_8).length>1024*1024)return false;
+            try{if(!json.isEmpty())new JSONObject(json);}catch(Exception error){return false;}
+            return prefs.edit().putString("partner",json).commit();
+        }
+        @JavascriptInterface public void openPartnerBackup(){runOnUiThread(()->{importingPartner=true;pickBackup();});}
         @JavascriptInterface public String loadData(){return prefs.getString("data","");}
         @JavascriptInterface public boolean saveData(String json){
             if(json==null || json.length()>1024*1024)return false;
@@ -92,17 +100,18 @@ public class MainActivity extends Activity {
             if(Build.VERSION.SDK_INT>=31&&!TodoReminders.exact(MainActivity.this))try{startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())));}catch(Exception error){notice("请在手机设置中允许星课表设置闹钟和提醒");}
         });}
         @JavascriptInterface public void exportBackup(String json){runOnUiThread(()->{pendingExport=json;Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/json");intent.putExtra(Intent.EXTRA_TITLE,"星课表备份.json");try{startActivityForResult(intent,EXPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
-        @JavascriptInterface public void openBackup(){runOnUiThread(()->{Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");try{startActivityForResult(intent,IMPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
+        @JavascriptInterface public void openBackup(){runOnUiThread(()->{importingPartner=false;pickBackup();});}
+        private void pickBackup(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");try{startActivityForResult(intent,IMPORT);}catch(Exception e){notice("无法打开文件选择器");}}
     }
     private void notice(String message){web.evaluateJavascript("window.nativeNotice("+JSONObject.quote(message)+")",null);}
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("pendingExport",pendingExport);}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("pendingExport",pendingExport);out.putBoolean("importingPartner",importingPartner);}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK || data==null || data.getData()==null)return;
         Uri uri=data.getData();
         try{
             if(request==EXPORT && pendingExport!=null){try(OutputStream stream=getContentResolver().openOutputStream(uri,"wt")){if(stream==null)throw new Exception();stream.write(pendingExport.getBytes(StandardCharsets.UTF_8));}pendingExport=null;notice("备份已保存到所选位置");}
-            if(request==IMPORT){try(InputStream input=getContentResolver().openInputStream(uri);ByteArrayOutputStream bytes=new ByteArrayOutputStream()){if(input==null)throw new Exception();byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1){bytes.write(buffer,0,n);if(bytes.size()>1024*1024)throw new Exception("文件不能超过 1 MB");}String raw=new String(bytes.toByteArray(),StandardCharsets.UTF_8);web.evaluateJavascript("window.importBackup("+JSONObject.quote(raw)+")",null);}}
+            if(request==IMPORT){try(InputStream input=getContentResolver().openInputStream(uri);ByteArrayOutputStream bytes=new ByteArrayOutputStream()){if(input==null)throw new Exception();byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1){bytes.write(buffer,0,n);if(bytes.size()>1024*1024)throw new Exception("文件不能超过 1 MB");}String raw=new String(bytes.toByteArray(),StandardCharsets.UTF_8);web.evaluateJavascript((importingPartner?"window.importPartner(":"window.importBackup(")+JSONObject.quote(raw)+")",null);}}
         }catch(Exception e){notice("文件操作失败，请检查文件和存储位置");}
     }
     @Override public void onBackPressed(){web.evaluateJavascript("window.handleBack && window.handleBack()",value->{if(!"true".equals(value))super.onBackPressed();});}

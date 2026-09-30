@@ -10,11 +10,6 @@
 </head>
 <body>
 <main>
-  <header class="top">
-    <div><div class="eyebrow">把时间安排得刚刚好</div><h1><span class="brand-star">★</span> 星课表</h1></div>
-    <button class="icon-button" id="settings" aria-label="设置">⚙</button>
-  </header>
-
   <section id="schedule-page" class="page active" aria-labelledby="nav-schedule">
     <section class="now-card">
       <div class="now-star">★</div>
@@ -29,7 +24,13 @@
       <button id="today" class="today-button">今天</button>
     </nav>
 
+    <div id="schedule-toggle" class="schedule-toggle" role="group" aria-label="选择课表" hidden>
+      <span class="schedule-thumb" aria-hidden="true"></span>
+      <button id="schedule-mine" class="selected" aria-pressed="true">我的课表</button>
+      <button id="schedule-partner" aria-pressed="false">搭子课表</button>
+    </div>
     <div class="page-actions">
+      <button id="partner-manage" class="secondary">搭子课表</button>
       <button id="add" class="primary">＋ 添加课程</button>
       <button id="times" class="secondary">作息时间</button>
     </div>
@@ -66,11 +67,13 @@
 <nav class="bottom-nav" aria-label="主要页面">
   <button id="nav-schedule" class="selected" aria-current="page"><span>▦</span>课表</button>
   <button id="nav-todos"><span>✓</span>事务待办</button>
+  <button id="settings" aria-label="设置与备份"><span>⚙</span>设置</button>
 </nav>
 
 <div id="modal" class="modal" hidden><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="sheet-head"><h2 id="dialog-title"></h2><button id="close" class="icon-button" aria-label="关闭">×</button></div><div id="dialog-body"></div></section></div>
 <div id="toast" role="status" class="toast" hidden></div>
 <input id="import-file" type="file" accept="application/json,.json" hidden>
+<input id="partner-file" type="file" accept="application/json,.json" hidden>
 <script src="core.js"></script><script src="app.js"></script>
 </body>
 </html>

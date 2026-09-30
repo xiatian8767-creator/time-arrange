@@ -123,6 +123,11 @@
     return {title:list.length?'今天的课程已结束':'今天没有课程',detail:'留一点时间，给自己。'};
   }
 
-  const api={defaults,minutes,validate,upgrade,monday,layout,position,status,periodAt};
+  function scheduleOnly(data){
+    if(!data||![1,2].includes(data.version))throw Error('不是有效的课表配置');
+    const clean=validate({version:2,slots:data.slots,courses:data.courses,todos:[]});
+    return {version:2,slots:clean.slots,courses:clean.courses};
+  }
+  const api={defaults,minutes,validate,upgrade,monday,layout,position,status,periodAt,scheduleOnly};
   root.StarCore=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
