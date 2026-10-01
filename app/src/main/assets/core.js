@@ -1,6 +1,7 @@
 (function(root){
   'use strict';
 
+  const BLUE='#6b9cf4',PINK='#eb91ad';
   const DEFAULT_SLOTS=[
     {id:'s1',start:'08:00',end:'08:40'},
     {id:'s2',start:'08:50',end:'09:30'},
@@ -19,6 +20,15 @@
 
   function defaults(){
     return {version:2,slots:DEFAULT_SLOTS.map(s=>({...s})),courses:[],todos:[]};
+  }
+
+  // Remove only the untouched course set bundled before 1.2.5. Any personal edit keeps the data.
+  function legacySampleCourses(){
+    return [
+      [1,4,4,'904'],[1,8,8,'905'],[2,3,3,'904'],[2,6,6,'905'],[2,8,8,'904'],
+      [3,1,1,'904'],[3,2,2,'905'],[3,5,5,'905'],[4,2,3,'905'],[4,6,6,'904'],
+      [4,9,10,'905'],[5,1,1,'905'],[5,4,5,'904'],[5,9,10,'904']
+    ].map((c,i)=>({id:'c'+i,day:c[0],start:'s'+c[1],end:'s'+c[2],name:c[3],color:c[3]==='904'?BLUE:PINK,room:'',note:''}));
   }
 
   function minutes(t){
@@ -82,6 +92,7 @@
     const lunch=plain.map(s=>({...s}));lunch.splice(5,0,{id:'lunch',start:'12:20',end:'14:00',kind:'activity',label:'午休'});
     const unchanged=JSON.stringify(clean.slots)===JSON.stringify(plain)||JSON.stringify(clean.slots)===JSON.stringify(lunch);
     if(data.version===1&&unchanged&&!clean.courses.some(c=>c.start==='s11'||c.end==='s11'))clean.slots=defaults().slots;
+    if(JSON.stringify(clean.courses)===JSON.stringify(legacySampleCourses()))clean.courses=[];
     return validate(clean);
   }
   function monday(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d;}
