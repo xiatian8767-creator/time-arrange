@@ -1,7 +1,6 @@
 (function(root){
   'use strict';
 
-  const BLUE='#6b9cf4',PINK='#eb91ad';
   const DEFAULT_SLOTS=[
     {id:'s1',start:'08:00',end:'08:40'},
     {id:'s2',start:'08:50',end:'09:30'},
@@ -19,11 +18,7 @@
   ];
 
   function defaults(){
-    return {version:2,slots:DEFAULT_SLOTS.map(s=>({...s})),courses:[
-      [1,4,4,'904'],[1,8,8,'905'],[2,3,3,'904'],[2,6,6,'905'],[2,8,8,'904'],
-      [3,1,1,'904'],[3,2,2,'905'],[3,5,5,'905'],[4,2,3,'905'],[4,6,6,'904'],
-      [4,9,10,'905'],[5,1,1,'905'],[5,4,5,'904'],[5,9,10,'904']
-    ].map((c,i)=>({id:'c'+i,day:c[0],start:'s'+c[1],end:'s'+c[2],name:c[3],room:'',note:'',color:c[3]==='904'?BLUE:PINK})),todos:[]};
+    return {version:2,slots:DEFAULT_SLOTS.map(s=>({...s})),courses:[],todos:[]};
   }
 
   function minutes(t){
