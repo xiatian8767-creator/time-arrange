@@ -7,6 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'">
   <title>星课表</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="v2.css">
 </head>
 <body>
 <main>
@@ -74,6 +75,13 @@
 <div id="toast" role="status" class="toast" hidden></div>
 <input id="import-file" type="file" accept="application/json,.json" hidden>
 <input id="partner-file" type="file" accept="application/json,.json" hidden>
-<script src="core.js"></script><script src="app.js"></script>
+<button id="ai-fab" aria-label="打开 AI 助手，长按拖动位置">✦</button>
+<section id="ai-panel" hidden role="dialog" aria-modal="true" aria-label="AI 助手">
+  <header><div><strong>星小助</strong><small>建议先预览，确认才修改</small></div><button id="ai-config" class="secondary">配置</button><button id="ai-close" class="icon-button" aria-label="关闭 AI 助手">×</button></header>
+  <div id="ai-messages" aria-live="polite"></div>
+  <div id="ai-photo-preview" hidden><img id="ai-photo" alt="待识别课表"><button id="ai-photo-remove" class="secondary">移除照片</button></div>
+  <form id="ai-form"><label for="ai-input" class="hint">仅发送你勾选的数据到模型服务商，可能产生 API 费用</label><div class="ai-scopes"><label><input id="ai-context-schedule" type="checkbox" checked>我的课表和作息</label><label><input id="ai-context-todos" type="checkbox">我的待办</label></div><textarea id="ai-input" maxlength="4000" placeholder="安排明天的待办，或识别照片中的课表……" required></textarea><div class="ai-tools"><button id="ai-upload" type="button" class="secondary">选图</button><button id="ai-camera" type="button" class="secondary">拍照</button><button id="ai-clear" type="button" class="secondary">清空</button><button id="ai-send" class="primary">发送</button></div></form>
+</section>
+<script src="core.js"></script><script src="ai-core.js"></script><script src="app.js"></script><script src="v2.js"></script>
 </body>
 </html>

@@ -47,6 +47,13 @@ public final class TodoReminders {
         return PendingIntent.getBroadcast(context,0,new Intent(context,ReminderReceiver.class).setAction("cn.xingke.timetable.REMIND"),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
     }
 
+    private static String scopeKey(String scope){
+        try{
+            byte[] hash=java.security.MessageDigest.getInstance("SHA-256").digest(scope.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return android.util.Base64.encodeToString(hash,android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP);
+        }catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
+    }
+
     /** Reconcile from saved data, so a killed WebView is never needed for reminders. */
     static synchronized void reconcile(Context context, boolean deliver) {
         channel(context);
@@ -55,7 +62,14 @@ public final class TodoReminders {
         PendingIntent pending=alarmIntent(context);
         alarm.cancel(pending);
         SharedPreferences data=context.getSharedPreferences("star_schedule",Context.MODE_PRIVATE);
-        SharedPreferences fired=context.getSharedPreferences("todo_delivered",Context.MODE_PRIVATE);
+        String scope=data.getString("active-scope","guest");
+        SharedPreferences scopeState=context.getSharedPreferences("todo_scope",Context.MODE_PRIVATE);
+        if(!scope.equals(scopeState.getString("active","guest"))){
+            notifications.cancelAll();
+            scopeState.edit().putString("active",scope).commit();
+        }
+        // Guest retains the legacy namespace; different accounts never deduplicate each other's IDs.
+        SharedPreferences fired=context.getSharedPreferences(scope.equals("guest")?"todo_delivered":"todo_delivered_"+scopeKey(scope),Context.MODE_PRIVATE);
         Map<String,JSONObject> active=new HashMap<>();
         try {
             JSONArray todos=new JSONObject(data.getString("data","{}")).optJSONArray("todos");

@@ -13,7 +13,7 @@ function save(next){
   const clean=C.validate(next),raw=JSON.stringify(clean);
   if(new TextEncoder().encode(raw).length>1024*1024)throw Error('数据超过 1 MB，请先备份并清理不需要的内容');
   if(window.Android){if(!Android.saveData(raw))throw Error('保存失败，请检查手机存储空间');}else localStorage.setItem('star-schedule',raw);
-  state=clean;render();
+  state=clean;render();window.dispatchEvent(new Event('star-data-changed'));
 }
 function notify(msg){$('toast').textContent=msg;$('toast').hidden=false;clearTimeout(timer);timer=setTimeout(()=>$('toast').hidden=true,3000);}
 window.nativeNotice=notify;
@@ -111,11 +111,13 @@ function editTodo(id=null){
 function settings(){
   showModal('设置与备份','<button class="setting-action" id="settings-times">作息时间<small>自定义课程和活动时间段</small></button><button class="setting-action" id="export">导出全部数据<small>将课表、待办和时间保存为本地 JSON 文件</small></button><button class="setting-action" id="import">导入备份<small>从手机文件恢复，将替换当前全部数据</small></button><button class="setting-action" id="reset">恢复空白课表<small>清空课程并恢复初始作息，不删除事务待办</small></button><p class="hint">数据只保存在本机，不需要账号和网络。卸载应用会删除数据，请先导出备份。</p><p class="hint">初始作息采用第 1–10 节、大课间、午休和晚餐，首次打开不预置课程。</p><div class="version">星课表 1.2.5 · 课表与待办</div>');
   $('settings-times').onclick=editTimes;$('export').onclick=exportData;$('import').onclick=()=>{if(window.Android)Android.openBackup();else $('import-file').click();};$('reset').onclick=()=>confirmAction('恢复空白课表？','当前课程将被清空、作息恢复初始值，事务待办会保留。',()=>{const fresh=C.defaults();save({...fresh,todos:state.todos});notify('已恢复空白课表');});
+  if(window.extendSettings)window.extendSettings();
 }
 function partnerSettings(){
   showModal('搭子课表','<button class="setting-action" id="partner-import">配置导入<small>导入搭子的 JSON 课表；只读取课程和作息</small></button><button class="setting-action" id="partner-online">联网申请<small>后续版本开放，当前无需登录</small></button><button class="setting-action" id="partner-export">导出我的课表配置<small>发给搭子使用，不包含待办</small></button>'+(partner?'<button class="setting-action" id="partner-remove">移除搭子课表<small>仅删除本机保存的搭子课表</small></button>':'')+'<p class="hint">支持星课表 1.0 / 1.1 备份和 1.2 课表配置。导入的是静态副本，更新需重新导入。完整备份可能包含待办，请优先分享“我的课表配置”。</p>');
   $('partner-import').onclick=()=>{if(window.Android)Android.openPartnerBackup();else $('partner-file').click();};
-  $('partner-online').onclick=()=>notify('联网申请将在后续版本开放');
+  $('partner-online').innerHTML='联网申请<small>搜索用户 ID、邀请和管理在线搭子</small>';
+  $('partner-online').onclick=()=>window.openOnlinePartner&&window.openOnlinePartner();
   $('partner-export').onclick=()=>{const raw=JSON.stringify(C.scheduleOnly(state),null,2);if(window.Android)Android.exportBackup(raw);else downloadJson(raw,'星课表-我的课表配置.json');};
   if(partner)$('partner-remove').onclick=()=>confirmAction('移除搭子课表？','自己的课表和待办不受影响。',()=>{persistPartner(null);viewPartner=false;renderSchedule();notify('搭子课表已移除');});
 }

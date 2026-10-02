@@ -1,0 +1,11 @@
+.git
+.agents
+.codex
+openspec
+test
+tests
+dist
+signing
+*.log
+.env
+__pycache__

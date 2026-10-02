@@ -7,3 +7,7 @@ dist/
 signing/
 *.log
 local.properties
+.env
+__pycache__/
+.pytest_cache/
+*.db

@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
     private WebView web;
     private SharedPreferences prefs;
+    private OnlineBridge online;
     private String pendingExport;
     private boolean openTodos;
     private boolean importingPartner;
@@ -53,6 +54,8 @@ public class MainActivity extends Activity {
         web.getSettings().setBlockNetworkLoads(true);
         web.getSettings().setSupportMultipleWindows(false);
         web.addJavascriptInterface(new LocalBridge(),"Android");
+        online=new OnlineBridge(this,web,prefs);
+        web.addJavascriptInterface(online,"Online");
         web.setWebViewClient(new WebViewClient(){
             @Override public void onPageFinished(WebView view,String url){if(openTodos){openTodos=false;view.evaluateJavascript("window.showPage && window.showPage('todos')",null);}}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return !HOME.equals(request.getUrl().toString());}
@@ -80,7 +83,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void openPartnerBackup(){runOnUiThread(()->{importingPartner=true;pickBackup();});}
         @JavascriptInterface public String loadData(){return prefs.getString("data","");}
         @JavascriptInterface public boolean saveData(String json){
-            if(json==null || json.length()>1024*1024)return false;
+            if(json==null || json.getBytes(StandardCharsets.UTF_8).length>1024*1024)return false;
             try{new JSONObject(json);}catch(Exception error){return false;}
             boolean saved=prefs.edit().putString("data",json).commit();
             if(saved)runOnUiThread(()->TodoReminders.reconcile(MainActivity.this,true));
@@ -104,9 +107,43 @@ public class MainActivity extends Activity {
         private void pickBackup(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");try{startActivityForResult(intent,IMPORT);}catch(Exception e){notice("无法打开文件选择器");}}
     }
     private void notice(String message){web.evaluateJavascript("window.nativeNotice("+JSONObject.quote(message)+")",null);}
+    public void pickPhoto(boolean camera){
+        try{
+            Intent intent;
+            if(camera){
+                Uri uri=Uri.parse("content://"+getPackageName()+".photo/capture.jpg");
+                intent=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                intent.setClipData(android.content.ClipData.newRawUri("课表照片",uri));
+            }else{intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");}
+            startActivityForResult(intent,camera?105:104);
+        }catch(Exception e){notice("无法打开相机或照片选择器");}
+    }
+    private void readPhoto(Uri uri){
+        try{
+            android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;
+            try(InputStream in=getContentResolver().openInputStream(uri)){android.graphics.BitmapFactory.decodeStream(in,null,options);}
+            if(options.outWidth<=0||options.outHeight<=0)throw new Exception();
+            options.inSampleSize=1;while(Math.max(options.outWidth,options.outHeight)/options.inSampleSize>2048)options.inSampleSize*=2;
+            options.inJustDecodeBounds=false;
+            android.graphics.Bitmap bitmap;
+            try(InputStream in=getContentResolver().openInputStream(uri)){bitmap=android.graphics.BitmapFactory.decodeStream(in,null,options);}
+            if(bitmap==null)throw new Exception();
+            ByteArrayOutputStream out=new ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,out);bitmap.recycle();
+            if(out.size()>2*1024*1024)throw new Exception();
+            String image="data:image/jpeg;base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
+            web.evaluateJavascript("window.receiveAIPhoto&&window.receiveAIPhoto("+JSONObject.quote(image)+")",null);
+        }catch(Exception e){notice("无法读取图片，请选择清晰、较小的课表照片");}
+    }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("pendingExport",pendingExport);out.putBoolean("importingPartner",importingPartner);}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(request==104||request==105){
+            Uri cameraUri=Uri.parse("content://"+getPackageName()+".photo/capture.jpg");
+            if(result==RESULT_OK){if(request==105)readPhoto(cameraUri);else if(data!=null&&data.getData()!=null)readPhoto(data.getData());}
+            if(request==105){revokeUriPermission(cameraUri,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);new java.io.File(getCacheDir(),"capture.jpg").delete();}
+            return;
+        }
         if(result!=RESULT_OK || data==null || data.getData()==null)return;
         Uri uri=data.getData();
         try{
@@ -119,5 +156,5 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);}
     @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();",null);}}
-    @Override protected void onDestroy(){if(web!=null){web.removeJavascriptInterface("Android");web.destroy();}super.onDestroy();}
+    @Override protected void onDestroy(){if(online!=null)online.destroy();if(web!=null){web.removeJavascriptInterface("Android");web.removeJavascriptInterface("Online");web.destroy();}super.onDestroy();}
 }

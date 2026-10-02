@@ -1,0 +1,18 @@
+#ai-fab{position:fixed;right:18px;bottom:110px;z-index:18;width:52px;height:52px;border-radius:50%;background:#6279dd;color:white;font-size:30px;box-shadow:0 5px 20px #495ca940;touch-action:none;user-select:none}
+#ai-panel{position:fixed;inset:0;background:#f7f5ef;z-index:25;display:flex;flex-direction:column;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom));overflow:hidden}
+#ai-panel[hidden],#ai-photo-preview[hidden]{display:none}
+#ai-panel header{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid #ddd}
+#ai-panel header>div{flex:1}#ai-panel small{display:block;font-size:12px;color:#777;margin-top:5px}
+#ai-messages{flex:1;min-height:80px;overflow-y:auto;padding:12px 0;overscroll-behavior:contain}
+.ai-message{white-space:pre-wrap;overflow-wrap:anywhere;background:white;border-radius:16px;padding:14px;margin:0 0 12px;line-height:1.6;font-size:14px}
+.ai-message.user{background:#e8ebfc;margin-left:24px}.ai-message button{margin-top:10px;display:block}
+#ai-form{padding-top:8px}#ai-form textarea{min-height:65px;max-height:130px;width:100%;resize:vertical;margin:8px 0}
+.ai-tools{display:flex;gap:8px}.ai-tools button{padding:10px 12px;min-width:0}.ai-tools .primary{flex:1}
+.ai-scopes{display:flex;gap:12px;flex-wrap:wrap}.ai-scopes label{display:flex;align-items:center;font-size:12px;gap:5px;margin:4px 0}.ai-scopes input{width:auto}
+#ai-photo-preview{display:flex;align-items:center;gap:14px;padding:6px}#ai-photo{max-height:90px;max-width:110px;object-fit:contain}
+.account-banner{padding:14px;border-radius:15px;background:#e9ecfb;margin-bottom:12px}.account-banner strong,.account-banner small{display:block;overflow-wrap:anywhere}.account-banner small{margin-top:6px;color:#626b80}
+.cloud-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.cloud-actions button{flex:1;min-width:85px}
+.invitation{background:#f3f2f8;border-radius:12px;padding:12px;margin:10px 0}.invitation small{display:block;overflow-wrap:anywhere}
+.diff-card{background:#f6f5fa;border-radius:12px;padding:12px;margin:12px 0}.diff-card pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:210px;overflow:auto}.diff-card summary{cursor:pointer}
+.modal{z-index:40}.toast{z-index:60}.danger-note{color:#a33;line-height:1.5}
+button:disabled{opacity:.5;cursor:wait}

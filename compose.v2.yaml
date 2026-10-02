@@ -1,0 +1,35 @@
+name: xingke-v2
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://xingke:${DB_PASSWORD:?Set DB_PASSWORD}@db:5432/xingke
+    ports:
+      - "127.0.0.1:18080:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: xingke
+      POSTGRES_USER: xingke
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U xingke"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  data:
