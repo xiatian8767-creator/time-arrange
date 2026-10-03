@@ -74,6 +74,15 @@ public class MainActivity extends Activity {
         web.loadUrl(HOME);
     }
     public class LocalBridge {
+        @JavascriptInterface public String loadBackground(){return prefs.getString("schedule-background","");}
+        @JavascriptInterface public boolean saveBackground(String raw){
+            if(raw==null||raw.length()>3*1024*1024)return false;
+            try{JSONObject value=new JSONObject(raw);String image=value.getString("image");double transparency=value.getDouble("transparency");
+                if((!image.isEmpty()&&!image.matches("^data:image/jpeg;base64,[A-Za-z0-9+/=]+$"))||Double.isNaN(transparency)||transparency<0||transparency>100)return false;
+                return prefs.edit().putString("schedule-background",raw).commit();
+            }catch(Exception e){return false;}
+        }
+        @JavascriptInterface public void pickBackground(){runOnUiThread(()->{try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),106);}catch(Exception e){notice("无法打开图片选择器");}});}
         @JavascriptInterface public String loadPartner(){return prefs.getString("partner","");}
         @JavascriptInterface public boolean savePartner(String json){
             if(json==null||json.getBytes(StandardCharsets.UTF_8).length>1024*1024)return false;
@@ -119,7 +128,8 @@ public class MainActivity extends Activity {
             startActivityForResult(intent,camera?105:104);
         }catch(Exception e){notice("无法打开相机或照片选择器");}
     }
-    private void readPhoto(Uri uri){
+    private void readPhoto(Uri uri){readPhoto(uri,false);}
+    private void readPhoto(Uri uri,boolean background){
         try{
             android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;
             try(InputStream in=getContentResolver().openInputStream(uri)){android.graphics.BitmapFactory.decodeStream(in,null,options);}
@@ -132,12 +142,14 @@ public class MainActivity extends Activity {
             ByteArrayOutputStream out=new ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,out);bitmap.recycle();
             if(out.size()>2*1024*1024)throw new Exception();
             String image="data:image/jpeg;base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
-            web.evaluateJavascript("window.receiveAIPhoto&&window.receiveAIPhoto("+JSONObject.quote(image)+")",null);
+            String callback=background?"receiveBackgroundPhoto":"receiveAIPhoto";
+            web.evaluateJavascript("window."+callback+"&&window."+callback+"("+JSONObject.quote(image)+")",null);
         }catch(Exception e){notice("无法读取图片，请选择清晰、较小的课表照片");}
     }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("pendingExport",pendingExport);out.putBoolean("importingPartner",importingPartner);}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(request==106){if(result==RESULT_OK&&data!=null&&data.getData()!=null)readPhoto(data.getData(),true);return;}
         if(request==104||request==105){
             Uri cameraUri=Uri.parse("content://"+getPackageName()+".photo/capture.jpg");
             if(result==RESULT_OK){if(request==105)readPhoto(cameraUri);else if(data!=null&&data.getData()!=null)readPhoto(data.getData());}

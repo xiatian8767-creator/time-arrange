@@ -66,7 +66,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>DeepSeek / Qwen · Key 仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='星课表 2.0.0-beta.2 · 内测版';
+    document.querySelector('.version').textContent='星课表 2.0.0-beta.3 · 内测版';
     const hints=$('dialog-body').querySelectorAll('.hint');if(hints.length)hints[0].textContent='不登录也能离线使用。登录后课表、作息和私人待办同步到你的服务器；待办不会向搭子公开。AI Key、照片和聊天不进入备份或云同步。';
   };
   function accountSettings(){
