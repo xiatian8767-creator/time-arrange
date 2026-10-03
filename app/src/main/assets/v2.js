@@ -66,7 +66,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>DeepSeek / Qwen · Key 仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='星课表 2.0.0-beta.1 · 离线优先';
+    document.querySelector('.version').textContent='星课表 2.0.0-beta.2 · 内测版';
     const hints=$('dialog-body').querySelectorAll('.hint');if(hints.length)hints[0].textContent='不登录也能离线使用。登录后课表、作息和私人待办同步到你的服务器；待办不会向搭子公开。AI Key、照片和聊天不进入备份或云同步。';
   };
   function accountSettings(){
@@ -164,10 +164,24 @@
     message(prompt+(photo?'\n[已附课表照片]':''),'user');$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
     try{
       // Conversation contains only user prompts / answers, not prior private contexts or images.
-      const response=await transport({target:'ai',body:{model:config.model,messages:[{role:'system',content:system},...history.slice(-8),{role:'user',content}],stream:false,max_tokens:8192}});
+      const contract='补充协议：权限为 '+JSON.stringify(permissions)+'。未授权的类型不得生成操作，请在 message 中提示勾选对应权限。create 不需要 id，由客户端生成；update/delete 的 id 必须来自上下文已有记录。待办 dueAt 优先使用带时区的 ISO 8601 日期时间，例如 2026-10-04T09:00:00+08:00，禁止秒时间戳。用户未指定具体时刻时先询问，不生成待办。缺省 priority=normal、completed=false、remind=false、note=""，只有明确要求提醒才设置 remind=true。操作示例：{"message":"请预览确认","warnings":[],"operations":[{"type":"todo.create","value":{"title":"喝一杯牛奶","dueAt":"2026-10-04T09:00:00+08:00"}}]}。示例时间仅展示格式，实际日期根据当前时间和用户要求计算。';
+      const messages=[{role:'system',content:system+'\n'+contract},...history.slice(-8),{role:'user',content}];
+      const requestAI=()=>transport({target:'ai',body:{model:config.model,messages,stream:false,max_tokens:8192,response_format:{type:'json_object'}}});
+      let response=await requestAI();
       if(generation!==epoch)throw Error('账号已切换，已丢弃此回复');
       const choice=response.choices&&response.choices[0];if(!choice||choice.finish_reason==='length')throw Error('回复不完整，请缩小任务后重试');
-      const answer=StarAI.parse(choice.message.content),result=StarAI.proposal(JSON.parse(base),answer,permissions);
+      let result;
+      try{result=StarAI.proposal(JSON.parse(base),StarAI.parse(choice.message.content),permissions);}
+      catch(validationError){
+        if(validationError.message.includes('勾选')||validationError.message.includes('未授权'))throw validationError;
+        waiting.textContent='正在校正建议格式，请稍候……';
+        messages.push({role:'assistant',content:choice.message.content},{role:'user',content:'返回数据未通过客户端校验：'+validationError.message+'。请按协议修正原建议；缺少用户信息时请询问，并返回空 operations。只输出 JSON。'});
+        response=await requestAI();
+        if(generation!==epoch)throw Error('账号已切换，已丢弃此回复');
+        const corrected=response.choices&&response.choices[0];
+        if(!corrected||corrected.finish_reason==='length')throw Error('回复不完整，请缩小任务后重试');
+        result=StarAI.proposal(JSON.parse(base),StarAI.parse(corrected.message.content),permissions);
+      }
       waiting.textContent=result.message;history.push({role:'user',content:prompt},{role:'assistant',content:result.message});history=history.slice(-8);
       if(result.changes.length){const button=document.createElement('button');button.className='primary';button.textContent='预览 '+result.changes.length+' 项修改';button.onclick=()=>preview(result,base,generation);waiting.appendChild(button);}
     }catch(err){waiting.textContent='未修改任何数据：'+err.message;}finally{aiBusy=false;$('ai-send').disabled=false;}

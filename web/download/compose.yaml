@@ -1,0 +1,9 @@
+services:
+  web:
+    build:
+      context: .
+    image: xingke-download:2.0.0-beta.2
+    container_name: xingke-download
+    restart: unless-stopped
+    ports:
+      - "80:80"

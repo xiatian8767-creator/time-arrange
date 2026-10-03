@@ -24,6 +24,17 @@ public final class OnlineBridge {
     private final ExecutorService network=Executors.newFixedThreadPool(2);
     private final Semaphore requests=new Semaphore(4);
     private static final String ALIAS="xingke-v2-vault";
+    // Beta-only private CA. Applied to the single test API host, never AI providers.
+    private javax.net.ssl.SSLSocketFactory betaSocketFactory() throws Exception {
+        KeyStore store=KeyStore.getInstance(KeyStore.getDefaultType());store.load(null);
+        try(InputStream in=activity.getAssets().open("xingke-ip-test-ca.crt")){
+            store.setCertificateEntry("xingke-test",java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(in));
+        }
+        javax.net.ssl.TrustManagerFactory trust=javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        trust.init(store);
+        javax.net.ssl.SSLContext tls=javax.net.ssl.SSLContext.getInstance("TLS");tls.init(null,trust.getTrustManagers(),null);
+        return tls.getSocketFactory();
+    }
     OnlineBridge(MainActivity a,WebView w,SharedPreferences p){activity=a;web=w;prefs=p;}
     private SecretKey key() throws Exception {
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
@@ -100,6 +111,9 @@ public final class OnlineBridge {
                     if(!method.matches("GET|POST|PUT|PATCH|DELETE"))throw new Exception("请求方法无效");
                 }
                 connection=(HttpsURLConnection)https(endpoint).openConnection();
+                if(!ai&&connection.getURL().getHost().equals("8.154.43.154")&&connection.getURL().getPort()==-1){
+                    connection.setSSLSocketFactory(betaSocketFactory());
+                }
                 connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(ai?90000:20000);
                 connection.setRequestMethod(method);connection.setRequestProperty("Accept","application/json");
                 if(!auth.isEmpty())connection.setRequestProperty("Authorization","Bearer "+auth);
