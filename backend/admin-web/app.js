@@ -1,0 +1,14 @@
+'use strict';
+const $=id=>document.getElementById(id);let csrf='',offset=0,query='',target=null;
+function status(text){$('notice').textContent=text;}
+function signedIn(on){$('login').hidden=on;$('dashboard').hidden=!on;$('logout').hidden=!on;}
+async function api(path,body){const response=await fetch('/admin/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok){if(response.status===401){signedIn(false);$('reset').close();csrf='';}throw Error(data.detail||'操作失败');}return data;}
+async function search(){const data=await api('users?q='+encodeURIComponent(query)+'&offset='+offset);$('rows').replaceChildren();for(const user of data.users){const tr=document.createElement('tr');for(const value of [user.username,user.nickname,user.userId]){const td=document.createElement('td');td.textContent=value;tr.append(td);}const td=document.createElement('td'),button=document.createElement('button');button.textContent='重置密码';button.onclick=()=>{target=user;$('target').textContent=user.username+' · '+user.nickname+' · '+user.userId;$('reset-form').reset();$('reset').showModal();};td.append(button);tr.append(td);$('rows').append(tr);}status(data.users.length?'显示第 '+(offset+1)+'–'+(offset+data.users.length)+' 条':'未找到匹配用户');$('prev').disabled=offset===0;$('next').disabled=!data.hasMore;}
+$('login-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{const result=await api('login',{username:$('username').value,password:$('password').value});$('password').value='';csrf=result.csrf;signedIn(true);await search();}catch(err){status(err.message);}finally{button.disabled=false;}};
+$('search').onsubmit=e=>{e.preventDefault();query=$('query').value;offset=0;search().catch(e=>status(e.message));};
+$('prev').onclick=()=>{offset=Math.max(0,offset-50);search().catch(e=>status(e.message));};$('next').onclick=()=>{offset+=50;search().catch(e=>status(e.message));};
+$('cancel').onclick=()=>{$('reset-form').reset();$('reset').close();};
+$('reset-form').onsubmit=async e=>{e.preventDefault();if($('new-password').value!==$('confirm-password').value)return $('confirm-password').setCustomValidity('两次密码不一致');e.submitter.disabled=true;try{await api('users/'+encodeURIComponent(target.userId)+'/password',{password:$('new-password').value});$('reset').close();$('reset-form').reset();status('密码已重置，用户需要重新登录。');}catch(err){$('reset').close();status(err.message);}finally{e.submitter.disabled=false;}};
+$('confirm-password').oninput=()=>$('confirm-password').setCustomValidity('');
+$('logout').onclick=async()=>{try{await api('logout',{});csrf='';signedIn(false);status('已退出');}catch(e){status(e.message);}};
+api('session').then(async data=>{csrf=data.csrf;signedIn(true);await search();}).catch(()=>signedIn(false));

@@ -53,7 +53,7 @@ public final class OnlineBridge {
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Base64.decode(parts[0],Base64.NO_WRAP)));
         return new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),StandardCharsets.UTF_8);
     }
-    private boolean allowedName(String name){return name.equals("cloud")||name.equals("ai")||name.equals("position");}
+    private boolean allowedName(String name){return name.equals("cloud")||name.equals("ai")||name.equals("position")||name.equals("mascot");}
     @JavascriptInterface public synchronized String load(String name){
         if(!allowedName(name))return "";
         try{return decrypt(prefs.getString("vault-"+name,""));}catch(Exception e){return "{\"vaultError\":true}";}

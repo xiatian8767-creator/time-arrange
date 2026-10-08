@@ -74,6 +74,21 @@ public class MainActivity extends Activity {
         web.loadUrl(HOME);
     }
     public class LocalBridge {
+        @JavascriptInterface public String loadAlarms(){return OrbitAlarms.list(MainActivity.this).toString();}
+        @JavascriptInterface public boolean saveAlarms(String raw){boolean ok=OrbitAlarms.save(MainActivity.this,raw);if(ok)stopService(new Intent(MainActivity.this,AlarmRingService.class));return ok;}
+        @JavascriptInterface public String reminderStatus(){try{return new JSONObject().put("notifications",TodoReminders.enabled(MainActivity.this)).put("exact",TodoReminders.exact(MainActivity.this)).put("fullscreen",Build.VERSION.SDK_INT<34||getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent()).put("battery",getSystemService(android.os.PowerManager.class).isIgnoringBatteryOptimizations(getPackageName())).put("ring",prefs.getBoolean("todo-alarm-mode",false)).toString();}catch(Exception e){return "{}";}}
+        @JavascriptInterface public void todoAlarmMode(boolean ring){prefs.edit().putBoolean("todo-alarm-mode",ring).commit();TodoReminders.reconcile(MainActivity.this,true);}
+        @JavascriptInterface public void reminderSettings(String kind){runOnUiThread(()->{try{
+            Intent intent;
+            if(kind.equals("fullscreen")&&Build.VERSION.SDK_INT>=34)intent=new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,Uri.parse("package:"+getPackageName()));
+            else if(kind.equals("battery"))intent=new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            else {intent=new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));
+                if(kind.equals("autostart")){String brand=Build.MANUFACTURER.toLowerCase(java.util.Locale.ROOT);String pkg=null,cls=null;
+                    if(brand.contains("xiaomi")){pkg="com.miui.securitycenter";cls="com.miui.permcenter.autostart.AutoStartManagementActivity";}
+                    else if(brand.contains("huawei")||brand.contains("honor")){pkg="com.huawei.systemmanager";cls="com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity";}
+                    if(pkg!=null){try{startActivity(new Intent().setComponent(new android.content.ComponentName(pkg,cls)));return;}catch(Exception ignored){}}}
+            }startActivity(intent);
+        }catch(Exception e){notice("请在系统设置中搜索自启动、后台运行或闹钟权限");}});}
         @JavascriptInterface public String loadBackground(){return prefs.getString("schedule-background","");}
         @JavascriptInterface public boolean saveBackground(String raw){
             if(raw==null||raw.length()>3*1024*1024)return false;
@@ -106,12 +121,12 @@ public class MainActivity extends Activity {
         });}
         @JavascriptInterface public void openNotificationSettings(){runOnUiThread(()->{
             Intent intent=Build.VERSION.SDK_INT>=26?new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()):new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));
-            try{startActivity(intent);}catch(Exception error){notice("请在手机设置中开启星课表通知");}
+            try{startActivity(intent);}catch(Exception error){notice("请在手机设置中开启Star Orbit通知");}
         });}
         @JavascriptInterface public void requestExactReminders(){runOnUiThread(()->{
-            if(Build.VERSION.SDK_INT>=31&&!TodoReminders.exact(MainActivity.this))try{startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())));}catch(Exception error){notice("请在手机设置中允许星课表设置闹钟和提醒");}
+            if(Build.VERSION.SDK_INT>=31&&!TodoReminders.exact(MainActivity.this))try{startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())));}catch(Exception error){notice("请在手机设置中允许Star Orbit设置闹钟和提醒");}
         });}
-        @JavascriptInterface public void exportBackup(String json){runOnUiThread(()->{pendingExport=json;Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/json");intent.putExtra(Intent.EXTRA_TITLE,"星课表备份.json");try{startActivityForResult(intent,EXPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
+        @JavascriptInterface public void exportBackup(String json){runOnUiThread(()->{pendingExport=json;Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/json");intent.putExtra(Intent.EXTRA_TITLE,"Star Orbit备份.json");try{startActivityForResult(intent,EXPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
         @JavascriptInterface public void openBackup(){runOnUiThread(()->{importingPartner=false;pickBackup();});}
         private void pickBackup(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");try{startActivityForResult(intent,IMPORT);}catch(Exception e){notice("无法打开文件选择器");}}
     }
@@ -167,6 +182,6 @@ public class MainActivity extends Activity {
     @Override protected void onPause(){super.onPause();web.onPause();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);}
-    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();",null);}}
+    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);OrbitAlarms.reconcile(this,false);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();if(window.refreshReminderStatus)refreshReminderStatus();",null);}}
     @Override protected void onDestroy(){if(online!=null)online.destroy();if(web!=null){web.removeJavascriptInterface("Android");web.removeJavascriptInterface("Online");web.destroy();}super.onDestroy();}
 }

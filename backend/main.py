@@ -95,7 +95,8 @@ def throttle(key, maximum, seconds=60):
 @app.middleware("http")
 async def guard(request: Request, call_next):
     try:
-        throttle((request.client.host, "auth" if "/auth/" in request.url.path else "general"), 30 if "/auth/" in request.url.path else 240)
+        is_auth = "/auth/" in request.url.path or request.url.path == "/admin/api/login"
+        throttle((request.client.host, "auth" if is_auth else "general"), 30 if is_auth else 240)
         # Read before JSON parsing; also limits chunked bodies without Content-Length.
         body = bytearray()
         async for chunk in request.stream():
@@ -169,7 +170,7 @@ def register(data: Registration, session: Session = Depends(db)):
 @app.post("/api/v1/auth/login")
 def login(data: Credentials, session: Session = Depends(db)):
     throttle(("login", data.username.lower()), 15, 300)
-    user = session.scalar(select(User).where(User.username == data.username.lower()))
+    user = session.scalar(select(User).where(User.username == data.username.lower()).with_for_update())
     try:
         password_work(passwords.verify, user.password_hash if user else DUMMY_HASH, data.password)
     except VerificationError:
@@ -294,3 +295,6 @@ def unbind(token=Depends(authenticated), session: Session = Depends(db)):
 def health(session: Session = Depends(db)):
     session.execute(text("SELECT 1"))
     return {"ok": True, "version": "2.0.0"}
+
+from .admin import router as admin_router
+app.include_router(admin_router)

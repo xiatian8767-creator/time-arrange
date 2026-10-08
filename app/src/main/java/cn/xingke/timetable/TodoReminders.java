@@ -56,6 +56,9 @@ public final class TodoReminders {
 
     /** Reconcile from saved data, so a killed WebView is never needed for reminders. */
     static synchronized void reconcile(Context context, boolean deliver) {
+        reconcile(context,deliver,false);
+    }
+    static synchronized void reconcile(Context context, boolean deliver, boolean scheduled) {
         channel(context);
         AlarmManager alarm=context.getSystemService(AlarmManager.class);
         NotificationManager notifications=context.getSystemService(NotificationManager.class);
@@ -65,6 +68,7 @@ public final class TodoReminders {
         String scope=data.getString("active-scope","guest");
         SharedPreferences scopeState=context.getSharedPreferences("todo_scope",Context.MODE_PRIVATE);
         if(!scope.equals(scopeState.getString("active","guest"))){
+            context.stopService(new Intent(context,AlarmRingService.class));
             notifications.cancelAll();
             scopeState.edit().putString("active",scope).commit();
         }
@@ -87,14 +91,14 @@ public final class TodoReminders {
             }
         }
         edits.commit();
-        if(!enabled(context))return;
+        boolean canNotify=enabled(context),ringMode=data.getBoolean("todo-alarm-mode",false);
         long now=System.currentTimeMillis(),next=Long.MAX_VALUE;
         for(Map.Entry<String,JSONObject> entry:active.entrySet()){
             String id=entry.getKey();JSONObject todo=entry.getValue();long due=todo.optLong("dueAt");
             if(fired.getLong(id,-1)==due)continue;
             if(due<=now&&deliver){
                 // Recover missed reminders after reboot or a permission change, up to 24 hours late.
-                if(now-due<=86400000L){
+                if(now-due<=86400000L&&canNotify){
                     Intent open=new Intent(context,MainActivity.class).setAction("cn.xingke.timetable.OPEN_TODOS").setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
                     PendingIntent content=PendingIntent.getActivity(context,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
                     Notification.Builder builder=Build.VERSION.SDK_INT>=26?new Notification.Builder(context,CHANNEL):new Notification.Builder(context);
@@ -107,13 +111,15 @@ public final class TodoReminders {
                         .setVisibility(Notification.VISIBILITY_PRIVATE).setPriority(Notification.PRIORITY_HIGH)
                         .setDefaults(Notification.DEFAULT_ALL).setWhen(due);
                     notifications.notify(id,1,builder.build());
+                    if(ringMode&&scheduled&&now-due<120000&&exact(context))AlarmRingService.ring(context,todo.optString("title","待办闹钟"),scope);
                 }
-                fired.edit().putLong(id,due).commit();
+                if(canNotify)fired.edit().putLong(id,due).commit();
             } else next=Math.min(next,Math.max(now+1000,due));
         }
         if(next!=Long.MAX_VALUE){
             try {
-                if(exact(context))alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);
+                if(exact(context)&&ringMode){PendingIntent show=PendingIntent.getActivity(context,80,new Intent(context,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);alarm.setAlarmClock(new AlarmManager.AlarmClockInfo(next,show),pending);}
+                else if(exact(context))alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);
                 else alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);
             } catch(SecurityException denied){alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);}
         }

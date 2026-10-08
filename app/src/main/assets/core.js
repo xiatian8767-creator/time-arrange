@@ -37,7 +37,7 @@
   }
 
   function validate(data){
-    if(!data||(data.version!==1&&data.version!==2)||!Array.isArray(data.slots)||!Array.isArray(data.courses))throw Error('不是有效的星课表备份');
+    if(!data||(data.version!==1&&data.version!==2)||!Array.isArray(data.slots)||!Array.isArray(data.courses))throw Error('不是有效的Star Orbit备份');
     if(data.version===2&&!Array.isArray(data.todos))throw Error('待办数据无效');
     if(data.slots.length<1||data.slots.length>24||data.courses.length>400)throw Error('请保留 1–24 个时间段，课程不超过 400 个');
     const ids=new Set();let last=-1;
