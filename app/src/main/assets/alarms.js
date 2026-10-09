@@ -1,17 +1,24 @@
 (function(){
- 'use strict';const native=window.Android&&typeof Android.loadAlarms==='function';
- const list=()=>{try{return JSON.parse(native?Android.loadAlarms():localStorage.getItem('orbit-clocks')||'[]');}catch(e){return [];}};
- function saveClock(items){if(native){if(!Android.saveAlarms(JSON.stringify(items)))throw Error('闹钟保存失败');}else localStorage.setItem('orbit-clocks',JSON.stringify(items));}
- function permissions(){showModal('提醒保障','<p class="hint">允许通知和闹钟权限，让提醒按时送达。若仍收不到提醒，请允许自启动并关闭省电限制。</p><div id="reminder-status"></div><button class="setting-action" id="r-notify">开启通知</button><button class="setting-action" id="r-exact">准时闹钟权限</button><button class="setting-action" id="r-screen">锁屏全屏提醒权限</button><button class="setting-action" id="r-battery">省电限制设置</button><button class="setting-action" id="r-auto">自启动 / 后台运行设置</button><label>待办提醒方式<select id="r-mode"><option value="notice">普通通知</option><option value="alarm">持续响铃与震动</option></select></label><p class="hint">闹钟最多响铃 10 分钟。强行停止应用后，请重新打开以恢复提醒。</p>');
-  window.refreshReminderStatus();for(const [id,kind] of [['r-screen','fullscreen'],['r-battery','battery'],['r-auto','autostart']])$(id).onclick=()=>native?Android.reminderSettings(kind):notify('请在 Android 应用中设置');
-  $('r-notify').onclick=()=>{if(native){Android.requestNotificationPermission();Android.openNotificationSettings();}};$('r-exact').onclick=()=>native&&Android.requestExactReminders();$('r-mode').onchange=()=>{if(native){Android.todoAlarmMode($('r-mode').value==='alarm');refreshReminderStatus();}};
- }
- window.refreshReminderStatus=()=>{if(!$('reminder-status'))return;const s=native?JSON.parse(Android.reminderStatus()):{};$('reminder-status').textContent='通知 '+(s.notifications?'✓':'未开启')+' · 准时 '+(s.exact?'✓':'未开启')+' · 锁屏 '+(s.fullscreen?'✓':'未开启')+' · 省电豁免 '+(s.battery?'✓':'未开启');$('r-mode').value=s.ring?'alarm':'notice';};
- function clocks(){const items=list();showModal('我的闹钟','<p class="hint">闹钟仅在本机响铃，可稍后 5 分钟提醒。</p><button id="clock-new" class="primary">＋ 新建闹钟</button><button id="clock-permissions" class="secondary">提醒保障</button><div id="clock-list">'+(items.map(a=>'<button class="setting-action" data-clock="'+esc(a.id)+'">'+esc(a.title)+'<small>'+esc(new Date(a.dueAt).toLocaleString())+' · '+(a.enabled?'已开启':'已关闭 / 已响铃')+'</small></button>').join('')||'<p class="hint">暂无闹钟</p>')+'</div>');$('clock-new').onclick=()=>edit();$('clock-permissions').onclick=permissions;$('clock-list').onclick=e=>{const b=e.target.closest('[data-clock]');if(b)edit(b.dataset.clock);};}
- function edit(id){const old=list().find(a=>a.id===id),a=old||{id:uid(),title:'',dueAt:Date.now()+3600000,enabled:true},dt=inputDateTime(a.dueAt);showModal(old?'编辑闹钟':'新建闹钟','<form id="clock-form"><label>名称<input id="clock-title" maxlength="80" required value="'+esc(a.title)+'"></label><label>日期<input type="date" id="clock-date" required value="'+dt.date+'"></label><label>时间<input type="time" id="clock-time" required value="'+dt.time+'"></label><label><input type="checkbox" id="clock-enabled" '+(a.enabled?'checked':'')+'>启用闹钟</label><div id="clock-error" class="error"></div><div class="actions"><button class="primary">保存</button>'+(old?'<button type="button" id="clock-delete" class="danger">删除</button>':'')+'</div></form>');
-  $('clock-form').onsubmit=e=>{e.preventDefault();try{const dueAt=new Date($('clock-date').value+'T'+$('clock-time').value).getTime(),enabled=$('clock-enabled').checked;if(!Number.isFinite(dueAt)||enabled&&dueAt<=Date.now())throw Error('请选择未来的响铃时间');const title=$('clock-title').value.trim();if(!title)throw Error('请输入闹钟名称');saveClock(list().filter(x=>x.id!==id).concat({...a,title,dueAt,enabled}));clocks();if(native){Android.requestNotificationPermission();if(enabled&&!Android.exactRemindersEnabled()){notify('请允许准时闹钟权限，才能按时响铃');Android.requestExactReminders();}}}catch(err){$('clock-error').textContent=err.message;}};
-  if(old)$('clock-delete').onclick=()=>{saveClock(list().filter(x=>x.id!==id));clocks();};
- }
- const previous=window.extendSettings;window.extendSettings=()=>{if(previous)previous();for(const [id,text,handler] of [['alarm-settings','我的闹钟',clocks],['reminder-settings','提醒保障',permissions]]){const button=document.createElement('button');button.className='setting-action';button.id=id;button.textContent=text;button.onclick=handler;$('dialog-body').prepend(button);}};
- const shortcut=document.createElement('button');shortcut.className='secondary';shortcut.id='alarm-shortcut';shortcut.textContent='我的闹钟';shortcut.onclick=clocks;document.querySelector('.reminder-actions').append(shortcut);
+ 'use strict';
+ const native=window.Android&&typeof Android.requestTodoPermissions==='function';
+ function permissions(alarm=false){if(native)Android.requestTodoPermissions(alarm);else notify('请在安卓应用中开启通知权限');}
+ window.requestTodoPermissions=permissions;
+ const openPermissions=()=>native?Android.openTodoPermissions():permissions(true);
+ const previous=window.extendSettings;
+ window.extendSettings=()=>{if(previous)previous();const b=document.createElement('button');b.className='setting-action';b.id='notification-permissions';b.textContent='通知权限';b.onclick=openPermissions;$('dialog-body').prepend(b);};
+ const button=document.createElement('button');button.className='secondary';button.id='notification-shortcut';button.textContent='通知权限';button.onclick=openPermissions;document.querySelector('.reminder-actions').append(button);
+ window.mountTodoAlarm=(todo)=>{
+  const dt=inputDateTime(todo.alarmAt||todo.dueAt);const delta=(todo.dueAt-(todo.alarmAt||todo.dueAt))/60000;
+  $('todo-remind').closest('.switch-row').insertAdjacentHTML('afterend','<div class="switch-row"><label for="todo-alarm">闹钟提醒</label><input type="checkbox" id="todo-alarm" '+(todo.alarmEnabled?'checked':'')+'></div><div id="alarm-options"><label>响铃时间<select id="alarm-offset"><option value="0">待办到点时</option><option value="5">提前 5 分钟</option><option value="10">提前 10 分钟</option><option value="30">提前 30 分钟</option><option value="custom">自定义时间</option></select></label><div class="todo-form-grid" id="alarm-custom"><label>日期<input type="date" id="alarm-date" value="'+dt.date+'"></label><label>时间<input type="time" id="alarm-time" value="'+dt.time+'"></label></div><p class="hint">到点响铃，可关闭或稍后 5 分钟提醒。</p></div>');
+  $('alarm-offset').value=[0,5,10,30].includes(delta)?String(delta):'custom';
+  function update(){$('alarm-options').hidden=!$('todo-alarm').checked;$('alarm-custom').hidden=$('alarm-offset').value!=='custom';}
+  $('todo-alarm').onchange=update;$('alarm-offset').onchange=update;update();
+ };
+ window.readTodoAlarm=(dueAt,todo)=>{
+  const alarmEnabled=$('todo-alarm').checked;
+  const alarmAt=alarmEnabled?($('alarm-offset').value==='custom'?new Date($('alarm-date').value+'T'+$('alarm-time').value).getTime():dueAt-Number($('alarm-offset').value)*60000):0;
+  if(alarmEnabled&&(!Number.isSafeInteger(alarmAt)||alarmAt<=0))throw Error('请选择有效的闹钟时间');
+  if(alarmEnabled&&alarmAt<=Date.now()&&(!todo.alarmEnabled||todo.alarmAt!==alarmAt))throw Error('请选择未来的闹钟时间');
+  return {alarmEnabled,alarmAt};
+ };
 })();

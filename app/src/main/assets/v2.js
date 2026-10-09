@@ -66,7 +66,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 2.0.0-beta.4 · 内测版';
+    document.querySelector('.version').textContent='Star Orbit 2.1.0-beta.1 · 探索版';
 
   };
   function accountSettings(){
@@ -145,13 +145,13 @@
   function readable(value,slots){
     if(!value)return '无';
     if(value.slots)return '作息：'+value.slots.map(s=>(s.label||s.id)+' '+s.start+'–'+s.end).join('；')+'\n课程：\n'+(value.courses.map(c=>readable(c,value.slots)).join('\n')||'空白课表');
-    if(value.title)return value.title+'\n时间：'+new Date(value.dueAt).toLocaleString()+'\n优先级：'+({low:'低',normal:'普通',high:'高'})[value.priority]+' · '+(value.completed?'已完成':'未完成')+' · '+(value.remind?'提醒':'不提醒')+(value.note?'\n备注：'+value.note:'');
+    if(value.title)return value.title+'\n时间：'+new Date(value.dueAt).toLocaleString()+'\n优先级：'+({low:'低',normal:'普通',high:'高'})[value.priority]+' · '+(value.completed?'已完成':'未完成')+' · '+(value.remind?'通知':'不通知')+(value.alarmEnabled?'\n闹钟：'+new Date(value.alarmAt).toLocaleString():'\n闹钟：关闭')+(value.note?'\n备注：'+value.note:'');
     const start=slots.find(s=>s.id===value.start),end=slots.find(s=>s.id===value.end);
     return value.name+' · 周'+DAYS[value.day-1]+' '+(start?start.start:value.start)+'–'+(end?end.end:value.end)+(value.room?' · '+value.room:'')+(value.note?'\n备注：'+value.note:'');
   }
   function preview(result,base,generation){
     showModal('确认 AI 修改','<p class="hint">'+esc(result.message)+'</p>'+(result.warnings.length?'<p class="danger-note">请核对不确定信息：<br>'+result.warnings.map(esc).join('<br>')+'</p>':'')+result.changes.map(change=>'<div class="diff-card"><strong>'+esc(change.type)+'</strong><p class="hint">修改前</p><pre>'+esc(readable(change.before,JSON.parse(base).slots))+'</pre><p class="hint">修改后</p><pre>'+esc(readable(change.after,result.next.slots))+'</pre></div>').join('')+'<p class="hint">确认后写入“我的课表 / 私人待办”，已登录时也会同步。不会修改搭子的课表。</p><div class="cloud-actions"><button id="ai-cancel" class="secondary">取消</button><button id="ai-apply" class="primary">确认全部修改</button></div>');
-    $('ai-cancel').onclick=closeModal;$('ai-apply').onclick=()=>{try{if(generation!==epoch||rawState()!==base)throw Error('数据或账号已变化，这份建议已失效，请重新生成');save(result.next);closeModal();message('你已确认，修改已保存。');notify('AI 修改已应用');}catch(e){notify(e.message);}};
+    $('ai-cancel').onclick=closeModal;$('ai-apply').onclick=()=>{try{if(generation!==epoch||rawState()!==base)throw Error('数据或账号已变化，这份建议已失效，请重新生成');save(result.next);closeModal();message('你已确认，修改已保存。');notify('AI 修改已应用');if(result.next.todos.some(t=>t.alarmEnabled&&!t.completed)&&window.requestTodoPermissions)window.requestTodoPermissions(true);}catch(e){notify(e.message);}};
   }
   $('ai-form').onsubmit=async e=>{
     e.preventDefault();if(aiBusy)return;
@@ -159,7 +159,7 @@
     const prompt=$('ai-input').value.trim();if(!prompt)return;
     const base=rawState(),generation=epoch,permissions={schedule:$('ai-context-schedule').checked,todos:$('ai-context-todos').checked};
     const context={version:2,now:Date.now(),localTime:new Date().toString()};if(permissions.schedule){context.slots=state.slots;context.courses=state.courses;}if(permissions.todos)context.todos=state.todos;
-    const system='你是Star Orbit助手。仅输出 JSON 对象：{"message":"中文回答","warnings":["不确定信息"],"operations":[]}。聊天时 operations 为空。所有操作都是等待用户确认的建议，不要宣称已执行。只使用用户授权提供的数据。不确定的图片文字不得编造。支持 type: course.create/course.update/course.delete/todo.create/todo.update/todo.delete（字段 id，value 不含 id）；新记录生成唯一字符串 id，update 只列变化字段。course value 包含 day(1-7),start/end(时间段id),name,color(#rrggbb),room,note；todo value 包含 title,dueAt(毫秒),createdAt(毫秒),priority(low/normal/high),note,completed,remind。更换作息或整张课表只允许 schedule.replace，带完整 slots 和 courses 数组（课程含 id），保留待办。slots 包含 id,start/end(HH:mm)，活动段可含 kind:activity,label。时间不重叠，课程不冲突。课程与待办字段长度限制分别遵循名称30/标题80/地点60/备注500。当前授权上下文 JSON：'+JSON.stringify(context);
+    const system='你是Star Orbit助手。仅输出 JSON 对象：{"message":"中文回答","warnings":["不确定信息"],"operations":[]}。聊天时 operations 为空。所有操作都是等待用户确认的建议，不要宣称已执行。只使用用户授权提供的数据。不确定的图片文字不得编造。支持 type: course.create/course.update/course.delete/todo.create/todo.update/todo.delete（字段 id，value 不含 id）；新记录生成唯一字符串 id，update 只列变化字段。course value 包含 day(1-7),start/end(时间段id),name,color(#rrggbb),room,note；todo value 包含 title,dueAt(毫秒),createdAt(毫秒),priority(low/normal/high),note,completed,remind,alarmEnabled(布尔，默认false),alarmAt(毫秒，默认0)。只有用户明确要求闹钟才开启alarmEnabled，并提供alarmAt；普通提醒只设remind。更换作息或整张课表只允许 schedule.replace，带完整 slots 和 courses 数组（课程含 id），保留待办。slots 包含 id,start/end(HH:mm)，活动段可含 kind:activity,label。时间不重叠，课程不冲突。课程与待办字段长度限制分别遵循名称30/标题80/地点60/备注500。当前授权上下文 JSON：'+JSON.stringify(context);
     const content=photo?[{type:'text',text:prompt},{type:'image_url',image_url:{url:photo}}]:prompt;
     message(prompt+(photo?'\n[已附课表照片]':''),'user');$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
     try{

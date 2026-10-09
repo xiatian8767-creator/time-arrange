@@ -35,6 +35,14 @@ class Todo(Strict):
     note: str = Field(max_length=500)
     completed: bool
     remind: bool
+    alarmEnabled: bool = False
+    alarmAt: int = Field(default=0, ge=0, le=8640000000000000)
+
+    @model_validator(mode="after")
+    def valid_alarm(self):
+        if self.alarmEnabled and not self.alarmAt:
+            raise ValueError("alarm time required")
+        return self
 
 
 class Document(Strict):

@@ -78,7 +78,9 @@
       if(typeof t.note!=='string'||t.note.length>500)throw Error('待办备注过长');
       if(typeof t.completed!=='boolean'||typeof t.remind!=='boolean')throw Error('待办状态无效');
       const createdAt=Number.isFinite(t.createdAt)?t.createdAt:t.dueAt;
-      return {id:t.id,title:t.title.trim(),dueAt:t.dueAt,priority:t.priority,note:t.note,completed:t.completed,remind:t.remind,createdAt};
+      const alarmEnabled=t.alarmEnabled===undefined?false:t.alarmEnabled,alarmAt=t.alarmAt===undefined?0:t.alarmAt;
+      if(typeof alarmEnabled!=='boolean'||!Number.isSafeInteger(alarmAt)||alarmAt<0||alarmAt>8640000000000000||(alarmEnabled&&alarmAt===0))throw Error('闹钟时间无效');
+      return {id:t.id,title:t.title.trim(),dueAt:t.dueAt,priority:t.priority,note:t.note,completed:t.completed,remind:t.remind,createdAt,alarmEnabled,alarmAt};
     });
     if(todos.length>500)throw Error('待办不能超过 500 个');
     return {version:2,slots,courses,todos};

@@ -29,10 +29,14 @@
         if(!op.value||typeof op.value!=='object'||Array.isArray(op.value)||Object.keys(op.value).some(k=>['__proto__','constructor','prototype'].includes(k)))throw Error('AI 字段无效');
         const supplied={...op.value};
         if(action==='create')delete supplied.id;
-        const fields=kind==='course'?['day','start','end','name','color','room','note']:['title','dueAt','priority','note','completed','remind','createdAt'];
+        const fields=kind==='course'?['day','start','end','name','color','room','note']:['title','dueAt','priority','note','completed','remind','createdAt','alarmEnabled','alarmAt'];
         if(Object.keys(supplied).some(k=>!fields.includes(k)))throw Error('AI 返回了未知字段');
         const defaults=action==='create'?(kind==='course'?{color:'#6b9cf4',room:'',note:''}:{priority:'normal',note:'',completed:false,remind:false,createdAt:Date.now()}):{};
         if(kind==='todo'&&typeof supplied.dueAt==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?$/.test(supplied.dueAt))supplied.dueAt=Date.parse(supplied.dueAt);
+        if(kind==='todo'&&typeof supplied.alarmAt==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(supplied.alarmAt))supplied.alarmAt=Date.parse(supplied.alarmAt);
+        if(kind==='todo'&&action==='update'&&'dueAt' in supplied&&before.alarmEnabled&&!('alarmAt' in supplied)&&!('alarmEnabled' in supplied)){
+          supplied.alarmAt=supplied.dueAt-(before.dueAt-before.alarmAt);
+        }
         const value={...defaults,...(before||{}),...supplied,id};
         if(action==='create')items.push(value);else items[index]=value;
       }

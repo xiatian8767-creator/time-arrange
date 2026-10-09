@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     private OnlineBridge online;
     private String pendingExport;
     private boolean openTodos;
+    private boolean permissionAlarm;private int permissionStage=-1;
     private boolean importingPartner;
     private static final int EXPORT=101, IMPORT=102;
     private static final String HOME="https://appassets.androidplatform.net/assets/index.html";
@@ -37,7 +38,7 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("star_schedule", MODE_PRIVATE);
         openTodos="cn.xingke.timetable.OPEN_TODOS".equals(getIntent().getAction());
         TodoReminders.channel(this);
-        if(saved!=null){pendingExport=saved.getString("pendingExport");importingPartner=saved.getBoolean("importingPartner");}
+        if(saved!=null){permissionAlarm=saved.getBoolean("permissionAlarm");permissionStage=saved.getInt("permissionStage",-1);pendingExport=saved.getString("pendingExport");importingPartner=saved.getBoolean("importingPartner");}
         FrameLayout frame=new FrameLayout(this);
         frame.setBackgroundColor(Color.rgb(247,245,239));
         web=new WebView(this);
@@ -65,7 +66,7 @@ public class MainActivity extends Activity {
                 if("https".equals(uri.getScheme()) && "appassets.androidplatform.net".equals(uri.getHost())) {
                     String path=uri.getPath();
                     if(path!=null && path.startsWith("/assets/") && !path.contains("..")){
-                        try{String file=path.substring(8);String mime=file.endsWith(".html")?"text/html":file.endsWith(".css")?"text/css":file.endsWith(".js")?"application/javascript":"application/octet-stream";return new WebResourceResponse(mime,"UTF-8",getAssets().open(file));}catch(Exception ignored){}
+                        try{String file=path.substring(8);String mime=file.endsWith(".html")?"text/html":file.endsWith(".css")?"text/css":file.endsWith(".js")?"application/javascript":file.endsWith(".png")?"image/png":file.endsWith(".svg")?"image/svg+xml":"application/octet-stream";return new WebResourceResponse(mime,"UTF-8",getAssets().open(file));}catch(Exception ignored){}
                     }
                 }
                 return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
@@ -74,21 +75,12 @@ public class MainActivity extends Activity {
         web.loadUrl(HOME);
     }
     public class LocalBridge {
-        @JavascriptInterface public String loadAlarms(){return OrbitAlarms.list(MainActivity.this).toString();}
-        @JavascriptInterface public boolean saveAlarms(String raw){boolean ok=OrbitAlarms.save(MainActivity.this,raw);if(ok)stopService(new Intent(MainActivity.this,AlarmRingService.class));return ok;}
-        @JavascriptInterface public String reminderStatus(){try{return new JSONObject().put("notifications",TodoReminders.enabled(MainActivity.this)).put("exact",TodoReminders.exact(MainActivity.this)).put("fullscreen",Build.VERSION.SDK_INT<34||getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent()).put("battery",getSystemService(android.os.PowerManager.class).isIgnoringBatteryOptimizations(getPackageName())).put("ring",prefs.getBoolean("todo-alarm-mode",false)).toString();}catch(Exception e){return "{}";}}
-        @JavascriptInterface public void todoAlarmMode(boolean ring){prefs.edit().putBoolean("todo-alarm-mode",ring).commit();TodoReminders.reconcile(MainActivity.this,true);}
-        @JavascriptInterface public void reminderSettings(String kind){runOnUiThread(()->{try{
-            Intent intent;
-            if(kind.equals("fullscreen")&&Build.VERSION.SDK_INT>=34)intent=new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,Uri.parse("package:"+getPackageName()));
-            else if(kind.equals("battery"))intent=new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-            else {intent=new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));
-                if(kind.equals("autostart")){String brand=Build.MANUFACTURER.toLowerCase(java.util.Locale.ROOT);String pkg=null,cls=null;
-                    if(brand.contains("xiaomi")){pkg="com.miui.securitycenter";cls="com.miui.permcenter.autostart.AutoStartManagementActivity";}
-                    else if(brand.contains("huawei")||brand.contains("honor")){pkg="com.huawei.systemmanager";cls="com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity";}
-                    if(pkg!=null){try{startActivity(new Intent().setComponent(new android.content.ComponentName(pkg,cls)));return;}catch(Exception ignored){}}}
-            }startActivity(intent);
-        }catch(Exception e){notice("请在系统设置中搜索自启动、后台运行或闹钟权限");}});}
+        @JavascriptInterface public void requestTodoPermissions(boolean alarm){runOnUiThread(()->{permissionAlarm=alarm;permissionStage=0;advancePermissions();});}
+        @JavascriptInterface public void openTodoPermissions(){runOnUiThread(()->{
+            boolean full=Build.VERSION.SDK_INT<34||getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent();
+            if(TodoReminders.enabled(MainActivity.this)&&TodoReminders.exact(MainActivity.this)&&full){new LocalBridge().openNotificationSettings();return;}
+            permissionAlarm=true;permissionStage=0;advancePermissions();
+        });}
         @JavascriptInterface public String loadBackground(){return prefs.getString("schedule-background","");}
         @JavascriptInterface public boolean saveBackground(String raw){
             if(raw==null||raw.length()>3*1024*1024)return false;
@@ -110,7 +102,7 @@ public class MainActivity extends Activity {
             if(json==null || json.getBytes(StandardCharsets.UTF_8).length>1024*1024)return false;
             try{new JSONObject(json);}catch(Exception error){return false;}
             boolean saved=prefs.edit().putString("data",json).commit();
-            if(saved)runOnUiThread(()->TodoReminders.reconcile(MainActivity.this,true));
+            if(saved)runOnUiThread(()->{TodoReminders.reconcile(MainActivity.this,true);TodoAlarms.reconcile(MainActivity.this,false);});
             return saved;
         }
         @JavascriptInterface public boolean notificationsEnabled(){return TodoReminders.enabled(MainActivity.this);}
@@ -129,6 +121,23 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void exportBackup(String json){runOnUiThread(()->{pendingExport=json;Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/json");intent.putExtra(Intent.EXTRA_TITLE,"Star Orbit备份.json");try{startActivityForResult(intent,EXPORT);}catch(Exception e){notice("无法打开文件选择器");}});}
         @JavascriptInterface public void openBackup(){runOnUiThread(()->{importingPartner=false;pickBackup();});}
         private void pickBackup(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");try{startActivityForResult(intent,IMPORT);}catch(Exception e){notice("无法打开文件选择器");}}
+    }
+    private void advancePermissions(){
+        try{
+            if(permissionStage==0){permissionStage=1;
+                if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+                    if(!prefs.getBoolean("notification-requested",false)||shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS)){
+                        prefs.edit().putBoolean("notification-requested",true).apply();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},203);return;
+                    }
+                }
+                if(!TodoReminders.enabled(this)){Intent i=Build.VERSION.SDK_INT>=26?new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()):new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));startActivityForResult(i,203);return;}
+            }
+            if(permissionStage==1){permissionStage=2;if(!TodoReminders.enabled(this)){permissionStage=-1;return;}
+                if(permissionAlarm&&Build.VERSION.SDK_INT>=31&&!TodoReminders.exact(this)){startActivityForResult(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())),204);return;}
+            }
+            if(permissionStage==2){permissionStage=3;if(permissionAlarm&&Build.VERSION.SDK_INT>=34&&!getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent()){startActivityForResult(new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,Uri.parse("package:"+getPackageName())),204);return;}}
+            permissionStage=-1;TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);
+        }catch(Exception error){permissionStage=-1;notice("请在手机设置中允许通知、闹钟和锁屏提醒");}
     }
     private void notice(String message){web.evaluateJavascript("window.nativeNotice("+JSONObject.quote(message)+")",null);}
     public void pickPhoto(boolean camera){
@@ -161,9 +170,10 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window."+callback+"&&window."+callback+"("+JSONObject.quote(image)+")",null);
         }catch(Exception e){notice("无法读取图片，请选择清晰、较小的课表照片");}
     }
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("pendingExport",pendingExport);out.putBoolean("importingPartner",importingPartner);}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("permissionAlarm",permissionAlarm);out.putInt("permissionStage",permissionStage);out.putString("pendingExport",pendingExport);out.putBoolean("importingPartner",importingPartner);}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(request==203||request==204){advancePermissions();return;}
         if(request==106){if(result==RESULT_OK&&data!=null&&data.getData()!=null)readPhoto(data.getData(),true);return;}
         if(request==104||request==105){
             Uri cameraUri=Uri.parse("content://"+getPackageName()+".photo/capture.jpg");
@@ -180,8 +190,8 @@ public class MainActivity extends Activity {
     }
     @Override public void onBackPressed(){web.evaluateJavascript("window.handleBack && window.handleBack()",value->{if(!"true".equals(value))super.onBackPressed();});}
     @Override protected void onPause(){super.onPause();web.onPause();}
-    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==203){if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)advancePermissions();else permissionStage=-1;return;}if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);}
-    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);OrbitAlarms.reconcile(this,false);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();if(window.refreshReminderStatus)refreshReminderStatus();",null);}}
+    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();",null);}}
     @Override protected void onDestroy(){if(online!=null)online.destroy();if(web!=null){web.removeJavascriptInterface("Android");web.removeJavascriptInterface("Online");web.destroy();}super.onDestroy();}
 }

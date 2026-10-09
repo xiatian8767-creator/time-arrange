@@ -76,7 +76,7 @@ public final class OnlineBridge {
                 .putString("partner",prefs.getString("partner-"+scope,""))
                 .putString("vault-cloud",encrypt(cloud));
             boolean ok=edit.commit();
-            if(ok)activity.runOnUiThread(()->TodoReminders.reconcile(activity,true));
+            if(ok)activity.runOnUiThread(()->{TodoReminders.reconcile(activity,true);TodoAlarms.reconcile(activity,false);});
             return ok;
         }catch(Exception e){return false;}
     }

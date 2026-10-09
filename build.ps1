@@ -24,7 +24,7 @@ New-Item -ItemType Directory -Force -Path $out,$classes,$dex | Out-Null
 $res=Join-Path $out 'resources.zip'
 $unsigned=Join-Path $out 'unsigned.apk'
 $aligned=Join-Path $out 'aligned.apk'
-$apk=Join-Path $out $(if($DebugBuild){'StarOrbit-2.0.0-beta.4-debug.apk'}else{'StarOrbit-2.0.0-beta.4.apk'})
+$apk=Join-Path $out $(if($DebugBuild){'StarOrbit-2.1.0-beta.1-debug.apk'}else{'StarOrbit-2.1.0-beta.1.apk'})
 Run (Join-Path $BuildTools 'aapt2.exe') @('compile','--dir',(Join-Path $source 'res'),'-o',$res)
 $linkArgs=@('link','-o',$unsigned,'-I',$Platform,'--manifest',(Join-Path $source 'AndroidManifest.xml'),'-A',(Join-Path $source 'assets'),'--auto-add-overlay',$res)
 if($DebugBuild){$linkArgs+='--debug-mode'}
@@ -37,7 +37,17 @@ if(Test-Path -LiteralPath $classesJar){Remove-Item -LiteralPath $classesJar}
 [IO.Compression.ZipFile]::CreateFromDirectory($classes,$classesJar)
 Run (Join-Path $BuildTools 'd8.bat') @('--lib',$Platform,'--min-api','23','--output',$dex,$classesJar)
 $archive=[IO.Compression.ZipFile]::Open($unsigned,[IO.Compression.ZipArchiveMode]::Update)
-try { [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,(Join-Path $dex 'classes.dex'),'classes.dex') | Out-Null } finally { $archive.Dispose() }
+try {
+    # Windows aapt2 can emit backslashes for nested assets; Android expects '/'.
+    foreach($entry in @($archive.Entries | Where-Object { $_.FullName.Contains('\') })) {
+        $normalized=$entry.FullName.Replace('\','/')
+        $target=$archive.CreateEntry($normalized)
+        $inputStream=$entry.Open();$outputStream=$target.Open()
+        try{$inputStream.CopyTo($outputStream)}finally{$inputStream.Dispose();$outputStream.Dispose()}
+        $entry.Delete()
+    }
+    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,(Join-Path $dex 'classes.dex'),'classes.dex') | Out-Null
+} finally { $archive.Dispose() }
 Run (Join-Path $BuildTools 'zipalign.exe') @('-f','-p','4',$unsigned,$aligned)
 $signing=Join-Path $PSScriptRoot 'signing'
 $key=Join-Path $signing 'star-timetable.jks'

@@ -203,7 +203,17 @@ def get_data(token=Depends(authenticated), session: Session = Depends(db)):
 
 @app.put("/api/v1/me/data")
 def put_data(data: PutData, token=Depends(authenticated), session: Session = Depends(db)):
-    result = session.execute(update(User).where(User.id == token.user_id, User.revision == data.baseRevision).values(document=data.document.model_dump(exclude_none=True), revision=User.revision + 1))
+    user = session.scalar(select(User).where(User.id == token.user_id).with_for_update())
+    document = data.document.model_dump(exclude_none=True)
+    # Older clients do not know alarm fields. Preserve existing alarms only when
+    # their task time is unchanged; never opt an old task into ringing.
+    previous = {t['id']: t for t in (user.document or {}).get('todos', [])}
+    for model, todo in zip(data.document.todos, document['todos']):
+        old = previous.get(todo['id'], {})
+        if 'alarmEnabled' not in model.model_fields_set and 'alarmAt' not in model.model_fields_set and old.get('dueAt') == todo['dueAt']:
+            todo['alarmEnabled'] = old.get('alarmEnabled', False)
+            todo['alarmAt'] = old.get('alarmAt', 0)
+    result = session.execute(update(User).where(User.id == token.user_id, User.revision == data.baseRevision).values(document=document, revision=User.revision + 1))
     if result.rowcount != 1:
         session.rollback()
         raise HTTPException(409, "云端已有更新，请先处理冲突")

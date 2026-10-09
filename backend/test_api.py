@@ -27,7 +27,7 @@ def register(client, username):
 def document():
     return {"version": 2, "slots": [{"id": "s1", "start": "08:00", "end": "08:45"}],
             "courses": [{"id": "c1", "day": 1, "start": "s1", "end": "s1", "name": "数学", "room": "101", "note": "", "color": "#6279dd"}],
-            "todos": [{"id": "t1", "title": "私人待办 secret", "dueAt": 1800000000000, "createdAt": 1700000000000, "priority": "normal", "note": "private", "completed": False, "remind": True}]}
+            "todos": [{"id": "t1", "title": "私人待办 secret", "dueAt": 1800000000000, "createdAt": 1700000000000, "priority": "normal", "note": "private", "completed": False, "remind": True, "alarmEnabled": False, "alarmAt": 0}]}
 
 
 def test_auth_sync_rotation_and_logout(client):

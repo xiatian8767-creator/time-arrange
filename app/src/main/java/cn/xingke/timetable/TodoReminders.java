@@ -91,7 +91,7 @@ public final class TodoReminders {
             }
         }
         edits.commit();
-        boolean canNotify=enabled(context),ringMode=data.getBoolean("todo-alarm-mode",false);
+        boolean canNotify=enabled(context);
         long now=System.currentTimeMillis(),next=Long.MAX_VALUE;
         for(Map.Entry<String,JSONObject> entry:active.entrySet()){
             String id=entry.getKey();JSONObject todo=entry.getValue();long due=todo.optLong("dueAt");
@@ -111,15 +111,13 @@ public final class TodoReminders {
                         .setVisibility(Notification.VISIBILITY_PRIVATE).setPriority(Notification.PRIORITY_HIGH)
                         .setDefaults(Notification.DEFAULT_ALL).setWhen(due);
                     notifications.notify(id,1,builder.build());
-                    if(ringMode&&scheduled&&now-due<120000&&exact(context))AlarmRingService.ring(context,todo.optString("title","待办闹钟"),scope);
                 }
                 if(canNotify)fired.edit().putLong(id,due).commit();
             } else next=Math.min(next,Math.max(now+1000,due));
         }
         if(next!=Long.MAX_VALUE){
             try {
-                if(exact(context)&&ringMode){PendingIntent show=PendingIntent.getActivity(context,80,new Intent(context,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);alarm.setAlarmClock(new AlarmManager.AlarmClockInfo(next,show),pending);}
-                else if(exact(context))alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);
+                if(exact(context))alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);
                 else alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);
             } catch(SecurityException denied){alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,pending);}
         }
