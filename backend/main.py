@@ -308,3 +308,6 @@ def health(session: Session = Depends(db)):
 
 from .admin import router as admin_router
 app.include_router(admin_router)
+from .feedback import router as feedback_router, admin_router as feedback_admin_router
+app.include_router(feedback_router)
+app.include_router(feedback_admin_router)

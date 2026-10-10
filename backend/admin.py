@@ -57,6 +57,10 @@ def page():
 def script():
     return FileResponse(Path(__file__).parent/'admin-web'/'app.js', media_type='application/javascript')
 
+@router.get('/feedback.js', include_in_schema=False)
+def feedback_script():
+    return FileResponse(Path(__file__).parent/'admin-web'/'feedback.js', media_type='application/javascript')
+
 @router.post('/api/login')
 def login(data: Login, response: Response, session: Session = Depends(m.db)):
     m.throttle(('admin-login', data.username.lower()), 8, 300)
