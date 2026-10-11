@@ -18,9 +18,9 @@ function save(next){
 function notify(msg){$('toast').textContent=msg;$('toast').hidden=false;clearTimeout(timer);timer=setTimeout(()=>$('toast').hidden=true,3000);}
 window.nativeNotice=notify;
 function closeModal(){if($('modal').hidden)return false;$('modal').hidden=true;document.body.style.overflow='';if(returnFocus&&returnFocus.isConnected)returnFocus.focus();return true;}
-function showPage(name){activePage=name==='todos'?'todos':'schedule';$('schedule-page').hidden=activePage!=='schedule';$('todo-page').hidden=activePage!=='todos';['schedule','todos'].forEach(page=>{const button=$('nav-'+page);button.classList.toggle('selected',page===activePage);if(page===activePage)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});if(activePage==='todos')renderTodos();else tick();window.scrollTo(0,0);}
+function showPage(name){activePage=['todos','settings'].includes(name)?name:'schedule';$('schedule-page').hidden=activePage!=='schedule';$('todo-page').hidden=activePage!=='todos';$('settings-page').hidden=activePage!=='settings';['schedule','todos','settings'].forEach(page=>{const button=$(page==='settings'?'settings':'nav-'+page);button.classList.toggle('selected',page===activePage);if(page===activePage)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});if(activePage==='todos')renderTodos();else if(activePage==='schedule')tick();window.scrollTo(0,0);}
 window.showPage=showPage;
-window.handleBack=()=>{if(closeModal())return true;if(activePage==='todos'){showPage('schedule');return true;}return false;};
+window.handleBack=()=>{if(closeModal())return true;if(activePage!=='schedule'){showPage('schedule');return true;}return false;};
 function showModal(title,html){returnFocus=document.activeElement;$('dialog-title').textContent=title;$('dialog-body').innerHTML=html;$('modal').hidden=false;document.body.style.overflow='hidden';$('close').focus();}
 $('close').onclick=closeModal;$('modal').onclick=e=>{if(e.target===$('modal'))closeModal();};
 document.addEventListener('keydown',e=>{if($('modal').hidden)return;if(e.key==='Escape')closeModal();if(e.key==='Tab'){const els=[...$('modal').querySelectorAll('button,input,select,textarea')].filter(el=>!el.disabled&&el.offsetParent!==null);if(!els.length)return;if(e.shiftKey&&document.activeElement===els[0]){e.preventDefault();els[els.length-1].focus();}else if(!e.shiftKey&&document.activeElement===els[els.length-1]){e.preventDefault();els[0].focus();}}});
@@ -33,10 +33,11 @@ function renderSchedule(){
   $('schedule-toggle').style.setProperty('--progress',viewPartner?1:0);
   ['schedule-mine','schedule-partner'].forEach((id,i)=>{const selected=Boolean(i)===viewPartner;$(id).classList.toggle('selected',selected);$(id).setAttribute('aria-pressed',String(selected));});
   document.querySelector('.page-actions').hidden=viewPartner;
+  $('schedule-management').hidden=viewPartner;
   $('add').hidden=viewPartner;$('times').hidden=viewPartner;
   document.querySelector('.legend').hidden=viewPartner;
   const now=new Date(),monday=C.monday(now);monday.setDate(monday.getDate()+weekOffset*7);const sunday=new Date(monday);sunday.setDate(sunday.getDate()+6);
-  $('week-title').textContent=(monday.getMonth()+1)+'月'+monday.getDate()+'日 — '+(sunday.getMonth()+1)+'月'+sunday.getDate()+'日';
+  $('week-title').textContent=(monday.getMonth()+1)+'.'+monday.getDate()+' — '+(sunday.getMonth()+1)+'.'+sunday.getDate();
   $('week-subtitle').textContent=monday.getFullYear()+' · '+(weekOffset===0?'本周':weekOffset===-1?'上周':weekOffset===1?'下周':'每周重复课表');
   $('week-head').innerHTML='<div class="axis-caption">时段<br>节次</div>'+DAYS.map((d,i)=>{const date=new Date(monday);date.setDate(date.getDate()+i);return '<div class="day-head '+(dateKey(date)===dateKey(now)?'current':'')+'">'+d+'<strong>'+date.getDate()+'</strong></div>';}).join('');
   currentLayout=C.layout(state.slots);const {rows,height}=currentLayout;$('schedule').style.height=height+'px';$('grid').style.height=height+'px';
@@ -74,7 +75,7 @@ function confirmAction(title,message,action){showModal(title,'<p class="confirm-
 
 function editTimes(){
   let draft=state.slots.map(s=>({...s}));
-  showModal('作息时间','<p class="hint">可修改课程和活动时间。时间段须按顺序排列且不重叠，最多 24 个。</p><div id="time-rows"></div><button class="secondary" id="add-slot" style="margin-top:13px">＋ 增加一节</button><p class="hint">默认作息来自参考表：第 1–10 节，并包含大课间、午休和晚餐。</p><div id="time-error" class="error" role="alert"></div><div class="actions"><button class="primary" id="save-times">保存作息时间</button></div>');
+  showModal('作息时间','<div id="time-rows"></div><button class="secondary" id="add-slot" style="margin-top:13px">＋ 增加一节</button><div id="time-error" class="error" role="alert"></div><div class="actions"><button class="primary" id="save-times">保存作息时间</button></div>');
   const rows=()=>{let lesson=0;$('time-rows').innerHTML=draft.map((s,i)=>{const name=s.kind==='activity'?(s.label||'活动'):'第 '+(++lesson)+' 节';return '<div class="time-edit-row"><span>'+esc(name)+'</span><input type="time" aria-label="'+esc(name)+'开始时间" data-index="'+i+'" data-field="start" value="'+s.start+'" required><span style="width:auto">—</span><input type="time" aria-label="'+esc(name)+'结束时间" data-index="'+i+'" data-field="end" value="'+s.end+'" required><button data-delete="'+i+'" aria-label="删除'+esc(name)+'">×</button></div>';}).join('');$('add-slot').disabled=draft.length>=24;};rows();
   $('time-rows').oninput=e=>{if(e.target.dataset.field)draft[+e.target.dataset.index][e.target.dataset.field]=e.target.value;};
   $('time-rows').onclick=e=>{const i=e.target.dataset.delete;if(i===undefined)return;const index=+i,id=draft[index].id;const used=state.courses.some(c=>{const a=state.slots.findIndex(s=>s.id===c.start),b=state.slots.findIndex(s=>s.id===c.end),target=state.slots.findIndex(s=>s.id===id);return target>=a&&target<=b;});if(used){$('time-error').textContent='这一时间段关联了课程，请先修改或删除对应课程。';return;}if(draft.filter(s=>s.kind!=='activity').length===1&&draft[index].kind!=='activity'){$('time-error').textContent='至少保留一节课程时间。';return;}draft.splice(index,1);$('time-error').textContent='';rows();};
@@ -110,9 +111,12 @@ function editTodo(id=null){
 }
 
 function settings(){
+  $('settings-content').replaceChildren();
   showModal('设置与备份','<button class="setting-action" id="settings-times">作息时间<small>自定义课程和活动时间段</small></button><button class="setting-action" id="export">导出全部数据<small>保存课表、待办与作息备份</small></button><button class="setting-action" id="import">导入备份<small>从手机文件恢复，将替换当前全部数据</small></button><button class="setting-action" id="reset">恢复空白课表<small>清空课程并恢复初始作息，不删除事务待办</small></button><div class="version">Star Orbit 1.2.5 · 课表与待办</div>');
   $('settings-times').onclick=editTimes;$('export').onclick=exportData;$('import').onclick=()=>{if(window.Android)Android.openBackup();else $('import-file').click();};$('reset').onclick=()=>confirmAction('恢复空白课表？','当前课程将被清空、作息恢复初始值，事务待办会保留。',()=>{const fresh=C.defaults();save({...fresh,todos:state.todos});notify('已恢复空白课表');});
   if(window.extendSettings)window.extendSettings();
+  $('settings-content').append(...$('dialog-body').childNodes);closeModal();showPage('settings');
+  if(window.decorateSettings)window.decorateSettings();
 }
 function partnerSettings(){
   showModal('搭子课表','<button class="setting-action" id="partner-import">配置导入<small>导入搭子分享的课表文件</small></button><button class="setting-action" id="partner-online">联网申请<small>后续版本开放，当前无需登录</small></button><button class="setting-action" id="partner-export">导出我的课表配置<small>发给搭子使用，不包含待办</small></button>'+(partner?'<button class="setting-action" id="partner-remove">移除搭子课表<small>仅删除本机保存的搭子课表</small></button>':'')+'<p class="hint">支持Star Orbit 1.0 / 1.1 备份和 1.2 课表配置。导入的是静态副本，更新需重新导入。完整备份可能包含待办，请优先分享“我的课表配置”。</p>');

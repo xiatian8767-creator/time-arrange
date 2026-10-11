@@ -66,7 +66,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 2.1.0-beta.1 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 2.1.0-beta.3 · 探索版';
 
   };
   function accountSettings(){
@@ -131,8 +131,8 @@
     $('ai-config-form').onsubmit=e=>{e.preventDefault();try{const p=$('ai-provider').value,key=$('ai-key').value.trim()||(p===provider?config.key:'');if(!key)throw Error('请填写 API Key');const url=new URL($('ai-base').value.trim());if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash)throw Error('请填写有效 HTTPS 官方地址');write('ai',{provider:p,key,baseUrl:url.href.replace(/\/$/,''),model:$('ai-model').value.trim()});closeModal();notify(native?'设置已保存':'浏览器预览不支持联网；Key 未持久保存');}catch(err){notify(err.message);}};
     $('ai-key-delete').onclick=()=>{write('ai',{});closeModal();notify('Key 已删除');};
   }
-  function message(text,role='assistant'){const el=document.createElement('div');el.className='ai-message '+role;el.textContent=text;$('ai-messages').appendChild(el);el.scrollIntoView({block:'end'});return el;}
-  function openAI(){closeModal();$('ai-panel').hidden=false;document.body.style.overflow='hidden';if(!$('ai-messages').children.length)message('你好，我是星小助。可以聊聊学习计划，也能生成课表和待办修改建议。所有修改都需要你预览并确认。');$('ai-input').focus();}
+  function message(text,role='assistant'){const el=document.createElement('div');el.className='ai-message '+role;el.textContent=text;$('ai-messages').appendChild(el);$('ai-welcome').hidden=true;el.scrollIntoView({block:'end'});return el;}
+  function openAI(){closeModal();$('ai-panel').hidden=false;document.body.style.overflow='hidden';$('ai-welcome').hidden=Boolean($('ai-messages').children.length);}
   function closeAI(){$('ai-panel').hidden=true;document.body.style.overflow='';$('ai-fab').focus();}
   $('ai-close').onclick=closeAI;$('ai-config').onclick=aiSettings;
   const oldBack=window.handleBack;window.handleBack=()=>{if(!$('modal').hidden)return oldBack();if(!$('ai-panel').hidden){closeAI();return true;}return oldBack();};
@@ -141,7 +141,7 @@
   $('ai-upload').onclick=()=>native?Online.pickPhoto(false):notify('请在安卓应用中选择照片');$('ai-camera').onclick=()=>native?Online.pickPhoto(true):notify('请在安卓应用中拍照');
   $('ai-photo-remove').onclick=()=>{photo=null;$('ai-photo').removeAttribute('src');$('ai-photo-preview').hidden=true;};
   ['ai-context-schedule','ai-context-todos'].forEach(id=>$(id).onchange=()=>{history=[];});
-  $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');history=[];$('ai-messages').replaceChildren();$('ai-photo-remove').click();};
+  $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');history=[];$('ai-messages').replaceChildren();$('ai-photo-remove').click();$('ai-welcome').hidden=false;};
   function readable(value,slots){
     if(!value)return '无';
     if(value.slots)return '作息：'+value.slots.map(s=>(s.label||s.id)+' '+s.start+'–'+s.end).join('；')+'\n课程：\n'+(value.courses.map(c=>readable(c,value.slots)).join('\n')||'空白课表');

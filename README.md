@@ -1,4 +1,12 @@
-# Star Orbit 2.1.0-beta.1
+# Star Orbit 2.1.0-beta.3
+
+## 2.1.0-beta.3 探索版 · 更宽的课表
+
+手机主界面两侧留白缩小至 8 px，课表获得更多显示空间；其它布局和业务逻辑不变。本版也将上一轮界面更新一并同步至 GitHub。官网下载只保留最新探索版入口。安装包 `dist/StarOrbit-2.1.0-beta.3.apk`，versionCode 15，沿用原发布签名。见 [更新说明](docs/release-2.1.0-beta.3.md)。
+
+## 2.1.0-beta.2 探索版 · 界面更新
+
+课表管理默认折叠，重新整理待办、设置和星小助页面，时间采用简洁的时 / 分双列滚动选择。发布页只提供最新探索版下载；后台使用侧栏、表格与反馈详情布局。此次不改存储、接口或提醒逻辑，不重置用户数据。安装包 `dist/StarOrbit-2.1.0-beta.2.apk`，versionCode 14。见 [更新说明](docs/release-2.1.0-beta.2.md)。
 
 ## 2.1 探索版 · 星团与待办闹钟
 
@@ -109,7 +117,7 @@
 .\build.ps1 -JavaHome 'C:\path\to\jdk-17' -AndroidSdk 'C:\path\to\Android\Sdk'
 ```
 
-输出在 `test/build/StarTimetable-1.2.5.apk`。脚本完成资源编译、Java 编译、DEX、对齐、签名及验证，无需 Gradle 或 npm。也可用 `-BuildTools` 和 `-Platform` 指定工具与 android.jar 的完整位置。`-DebugBuild` 仅供本地验证。
+输出在 `test/build/StarOrbit-2.1.0-beta.3.apk`。脚本完成资源编译、Java 编译、DEX、对齐、签名及验证，无需 Gradle 或 npm。也可用 `-BuildTools` 和 `-Platform` 指定工具与 android.jar 的完整位置。`-DebugBuild` 仅供本地验证。
 
 `signing/` 只保留在本机，不放入源码压缩包或 GitHub。从源码包首次构建会生成新密钥，因此独立构建的包不能覆盖本次签名安装包。请妥善保留原项目的签名文件。
 

@@ -10,16 +10,12 @@
   <link rel="stylesheet" href="v2.css">
   <link rel="stylesheet" href="background.css">
   <link rel="stylesheet" href="mascot.css">
+  <link rel="stylesheet" href="ui-refresh.css">
+  <link rel="stylesheet" href="time-wheel.css">
 </head>
 <body>
 <main>
   <section id="schedule-page" class="page active" aria-labelledby="nav-schedule">
-    <section class="now-card">
-      <div class="now-star">★</div>
-      <div class="now-copy"><div id="now-label" class="now-label"></div><div id="now-detail"></div></div>
-      <span class="offline">离线可用</span>
-    </section>
-
     <nav class="week-nav" aria-label="切换周">
       <button id="prev" aria-label="上一周">‹</button>
       <div><strong id="week-title"></strong><small id="week-subtitle"></small></div>
@@ -32,22 +28,26 @@
       <button id="schedule-mine" class="selected" aria-pressed="true">我的课表</button>
       <button id="schedule-partner" aria-pressed="false">搭子课表</button>
     </div>
-    <div class="page-actions">
-      <button id="partner-manage" class="secondary">搭子课表</button>
-      <button id="add" class="primary">＋ 添加课程</button>
-      <button id="times" class="secondary">作息时间</button>
-    </div>
+    <details id="schedule-management" class="schedule-management">
+      <summary><span>课程与管理</span><span class="disclosure-arrow" aria-hidden="true">⌄</span></summary>
+      <section class="now-card"><div class="now-copy"><div id="now-label" class="now-label"></div><div id="now-detail"></div></div></section>
+      <div class="page-actions">
+        <button id="partner-manage" class="secondary">搭子管理</button>
+        <button id="times" class="secondary">作息时间</button>
+        <button id="add" class="primary">＋ 课程</button>
+      </div>
+    </details>
 
     <section class="schedule-shell">
       <div id="week-head" class="week-head"></div>
       <div id="schedule" class="schedule"><div id="time-axis"></div><div id="grid" class="grid"></div></div>
     </section>
-    <div class="legend"><span class="legend-hint">★ 当前时间 · 点空白处添加自己的课程</span></div>
+    <div class="legend"><span class="legend-hint">点课程看详情，点空白时段添加</span></div>
   </section>
 
   <section id="todo-page" class="page" hidden aria-labelledby="nav-todos">
     <section class="todo-hero">
-      <div><div class="section-kicker">事务待办</div><h2>今天要完成什么？</h2><p id="todo-subtitle"></p></div>
+      <div><div class="section-kicker">我的安排</div><h2>今天的待办</h2><p id="todo-subtitle"></p></div>
       <button id="add-todo" class="round-add" aria-label="新增待办">＋</button>
     </section>
     <section class="todo-summary" aria-label="待办概况">
@@ -65,11 +65,12 @@
     <p id="notification-note" class="notification-note"></p>
     <div class="reminder-actions"><button id="notification-settings" class="secondary" hidden>开启系统通知</button><button id="exact-settings" class="secondary" hidden>允许准时提醒</button></div>
   </section>
+  <section id="settings-page" class="page" hidden><header class="settings-heading"><small>日常偏好</small><h2>设置</h2></header><div id="settings-content"></div></section>
 </main>
 
 <nav class="bottom-nav" aria-label="主要页面">
   <button id="nav-schedule" class="selected" aria-current="page"><span>▦</span>课表</button>
-  <button id="nav-todos"><span>✓</span>事务待办</button>
+  <button id="nav-todos"><span>✓</span>待办</button>
   <button id="settings" aria-label="设置与备份"><span>⚙</span>设置</button>
 </nav>
 
@@ -79,11 +80,11 @@
 <input id="partner-file" type="file" accept="application/json,.json" hidden>
 <button id="ai-fab" aria-label="打开 AI 助手，长按拖动位置">✦</button>
 <section id="ai-panel" hidden role="dialog" aria-modal="true" aria-label="AI 助手">
-  <header><div><strong>星小助</strong><small>建议先预览，确认才修改</small></div><button id="ai-config" class="secondary">配置</button><button id="ai-close" class="icon-button" aria-label="关闭 AI 助手">×</button></header>
-  <div id="ai-messages" aria-live="polite"></div>
+  <header><div><strong>星小助</strong></div><button id="ai-config" class="icon-button" aria-label="助手设置">⚙</button><button id="ai-close" class="icon-button" aria-label="关闭 AI 助手">×</button></header>
+  <div id="ai-stream"><section id="ai-welcome"><div class="welcome-orbit"><span class="plush-body"></span></div><h2>今天想安排些什么？</h2><p>我在这儿，慢慢说。</p><div class="ai-suggestions"><button type="button" data-ai-prompt="帮我安排一件待办">安排一件待办 <span>↗</span></button><button type="button" id="ai-photo-start">拍照识别课表 <span>↗</span></button><button type="button" data-ai-prompt="和我聊聊学习安排">聊聊学习安排 <span>↗</span></button></div></section><div id="ai-messages" aria-live="polite"></div></div>
   <div id="ai-photo-preview" hidden><img id="ai-photo" alt="待识别课表"><button id="ai-photo-remove" class="secondary">移除照片</button></div>
-  <form id="ai-form"><label for="ai-input" class="hint">仅发送你勾选的数据到模型服务商，可能产生 API 费用</label><div class="ai-scopes"><label><input id="ai-context-schedule" type="checkbox" checked>我的课表和作息</label><label><input id="ai-context-todos" type="checkbox">我的待办</label></div><textarea id="ai-input" maxlength="4000" placeholder="安排明天的待办，或识别照片中的课表……" required></textarea><div class="ai-tools"><button id="ai-upload" type="button" class="secondary">选图</button><button id="ai-camera" type="button" class="secondary">拍照</button><button id="ai-clear" type="button" class="secondary">清空</button><button id="ai-send" class="primary">发送</button></div></form>
+  <form id="ai-form"><div class="ai-scopes"><label><input id="ai-context-schedule" type="checkbox">使用课表</label><label><input id="ai-context-todos" type="checkbox">使用待办</label></div><textarea id="ai-input" maxlength="4000" placeholder="和星小助说说你的安排…" aria-label="输入消息" required></textarea><div class="ai-tools"><button id="ai-upload" type="button" class="secondary">选图</button><button id="ai-camera" type="button" class="secondary">拍照</button><button id="ai-clear" type="button" class="secondary">清空</button><button id="ai-send" class="primary">发送</button></div><p class="ai-privacy">仅发送勾选的数据 · API 可能产生费用</p></form>
 </section>
-<script src="core.js"></script><script src="ai-core.js"></script><script src="app.js"></script><script src="v2.js"></script><script src="background.js"></script><script src="alarms.js"></script><script src="mascot.js"></script>
+<script src="core.js"></script><script src="ai-core.js"></script><script src="app.js"></script><script src="v2.js"></script><script src="background.js"></script><script src="alarms.js"></script><script src="mascot.js"></script><script src="time-wheel.js"></script><script src="ui-refresh.js"></script>
 </body>
 </html>
