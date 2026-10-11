@@ -1,4 +1,8 @@
-# Star Orbit 2.1.0-beta.3
+# Star Orbit 2.1.0-beta.4
+
+## 2.1.0-beta.4 探索版 · 登录更简洁
+
+服务地址已内置，注册和登录无需填写服务器。原有登录状态、本机数据与离线使用保持不变；HTTPS 校验和 AI 服务商设置不变。安装包 `dist/StarOrbit-2.1.0-beta.4.apk`，versionCode 16，沿用原发布签名。见 [更新说明](docs/release-2.1.0-beta.4.md)。
 
 ## 2.1.0-beta.3 探索版 · 更宽的课表
 
@@ -117,7 +121,7 @@
 .\build.ps1 -JavaHome 'C:\path\to\jdk-17' -AndroidSdk 'C:\path\to\Android\Sdk'
 ```
 
-输出在 `test/build/StarOrbit-2.1.0-beta.3.apk`。脚本完成资源编译、Java 编译、DEX、对齐、签名及验证，无需 Gradle 或 npm。也可用 `-BuildTools` 和 `-Platform` 指定工具与 android.jar 的完整位置。`-DebugBuild` 仅供本地验证。
+输出在 `test/build/StarOrbit-2.1.0-beta.4.apk`。脚本完成资源编译、Java 编译、DEX、对齐、签名及验证，无需 Gradle 或 npm。也可用 `-BuildTools` 和 `-Platform` 指定工具与 android.jar 的完整位置。`-DebugBuild` 仅供本地验证。
 
 `signing/` 只保留在本机，不放入源码压缩包或 GitHub。从源码包首次构建会生成新密钥，因此独立构建的包不能覆盖本次签名安装包。请妥善保留原项目的签名文件。
 

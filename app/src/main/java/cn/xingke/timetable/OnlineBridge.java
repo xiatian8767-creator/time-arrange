@@ -24,6 +24,7 @@ public final class OnlineBridge {
     private final ExecutorService network=Executors.newFixedThreadPool(2);
     private final Semaphore requests=new Semaphore(4);
     private static final String ALIAS="xingke-v2-vault";
+    private static final String CLOUD_BASE_URL="https://8.154.43.154";
     // Beta-only private CA. Applied to the single test API host, never AI providers.
     private javax.net.ssl.SSLSocketFactory betaSocketFactory() throws Exception {
         KeyStore store=KeyStore.getInstance(KeyStore.getDefaultType());store.load(null);
@@ -104,9 +105,10 @@ public final class OnlineBridge {
                     if(auth.isEmpty())throw new Exception("请先设置 API Key");
                 }else{
                     JSONObject cloud=new JSONObject(load("cloud"));
+                    if(!CLOUD_BASE_URL.equals(cloud.optString("baseUrl")))throw new Exception("请重新登录");
                     String path=req.getString("path");
                     if(!path.startsWith("/api/v1/")||path.contains("..")||path.contains("#"))throw new Exception("请求路径无效");
-                    endpoint=cloud.getString("baseUrl").replaceAll("/+$","")+path;
+                    endpoint=CLOUD_BASE_URL+path;
                     method=req.getString("method");auth=req.optString("token");
                     if(!method.matches("GET|POST|PUT|PATCH|DELETE"))throw new Exception("请求方法无效");
                 }

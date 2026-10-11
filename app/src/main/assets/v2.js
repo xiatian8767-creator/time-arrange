@@ -1,14 +1,18 @@
 'use strict';
 (function(){
+  const CLOUD_BASE_URL='https://8.154.43.154';
   const native=window.Online,requests=new Map();let memoryAI={},syncing=false,applying=false,syncTimer,epoch=0,onlineMate=false,partnerInfo=null;
   function read(name){try{const raw=native?Online.load(name):localStorage.getItem('star-v2-'+name);const value=raw?JSON.parse(raw):{};if(value.vaultError)throw Error();return value;}catch(e){notify('加密设置读取失败，请重新配置；本机课表未删除');return {};}}
   function write(name,value){if(native){if(!Online.store(name,JSON.stringify(value)))throw Error('加密设置保存失败');}else if(name==='ai')memoryAI=value;else localStorage.setItem('star-v2-'+name,JSON.stringify(value));}
   let cloud=read('cloud'),scope=native?Online.scope():(localStorage.getItem('star-v2-scope')||'guest'),syncStatus='离线可用';
+  // Never forward a session from a previously configured, different server.
+  // Keep its local account document intact; a new login selects its own scope.
+  if(cloud.user&&cloud.baseUrl!==CLOUD_BASE_URL){cloud={baseUrl:CLOUD_BASE_URL};write('cloud',cloud);notify('请重新登录；原有本机数据已保留');}
+  if(!cloud.user)cloud={baseUrl:CLOUD_BASE_URL};
   if(cloud.user&&scope!==accountScope(cloud)){cloud={baseUrl:cloud.baseUrl};write('cloud',cloud);}
   const rawState=()=>JSON.stringify(state),isDirty=()=>rawState()!==cloud.synced;
   function accountScope(c){return c.baseUrl+'#'+c.user.userId;}
   function persist(){write('cloud',cloud);}
-  function validBase(raw){const u=new URL(raw);if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('请输入 HTTPS 服务器根地址，不含路径和账号');return u.origin;}
   window.onlineResult=(id,status,body,json)=>{const pending=requests.get(id);if(!pending)return;requests.delete(id);clearTimeout(pending.timer);let data;try{data=json?JSON.parse(body):{detail:body};}catch(e){data={detail:'服务器返回格式不正确'};}if(status>=200&&status<300)pending.resolve(data);else{const error=Error(typeof data.detail==='string'?data.detail:'请求失败（'+status+'）');error.status=status;pending.reject(error);}};
   function transport(req){if(!native)return Promise.reject(Error('联网和 AI 功能请在安卓安装包中使用；浏览器仅提供离线预览'));return new Promise((resolve,reject)=>{const id=uid(),timer=setTimeout(()=>{requests.delete(id);reject(Error('请求超时，请重试'));},105000);requests.set(id,{resolve,reject,timer});Online.request(id,JSON.stringify(req));});}
   let refreshing=null;
@@ -66,12 +70,12 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 2.1.0-beta.3 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 2.1.0-beta.4 · 探索版';
 
   };
   function accountSettings(){
     if(!cloud.user){loginForm();return;}
-    showModal('账号与同步','<div class="account-banner"><strong>'+esc(cloud.user.nickname)+'</strong><small>用户 ID：'+esc(cloud.user.userId)+'</small><small>'+esc(syncStatus)+'</small></div><p class="hint">服务器：'+esc(cloud.baseUrl)+'<br>当前数据属于此账号；退出后恢复未登录时的本机数据。待办仅本人可读取。</p><button id="cloud-sync" class="setting-action">立即同步</button><button id="cloud-partner" class="setting-action">管理在线搭子</button><button id="cloud-logout" class="setting-action">退出登录</button>');
+    showModal('账号与同步','<div class="account-banner"><strong>'+esc(cloud.user.nickname)+'</strong><small>用户 ID：'+esc(cloud.user.userId)+'</small><small>'+esc(syncStatus)+'</small></div><p class="hint">当前数据属于此账号；退出后恢复未登录时的本机数据。待办仅本人可读取。</p><button id="cloud-sync" class="setting-action">立即同步</button><button id="cloud-partner" class="setting-action">管理在线搭子</button><button id="cloud-logout" class="setting-action">退出登录</button>');
     $('cloud-sync').onclick=()=>sync(true);$('cloud-partner').onclick=window.openOnlinePartner;
     $('cloud-logout').onclick=()=>{
       showModal('退出登录？','<p class="hint">账号数据仍保留在本机独立空间，退出后显示访客数据。'+(isDirty()?'你还有未同步修改，请先导出备份或同步。':'')+'</p><button id="logout-export" class="setting-action">导出当前备份</button><button id="logout-confirm" class="danger">退出并恢复访客数据</button>');
@@ -79,12 +83,12 @@
     };
   }
   function loginForm(){
-    showModal('注册 / 登录','<p class="hint">登录不是必选项。你的课表、作息和私人待办会存到此服务器；仅向搭子共享课表和作息。</p><form id="login-form"><label>服务器地址<input id="server-url" type="url" required placeholder="https://api.example.com" value="'+esc(cloud.baseUrl||'')+'"></label><label>用户名<input id="login-name" autocomplete="username" required pattern="[a-zA-Z0-9_]{3,32}" placeholder="3–32 位字母、数字或下划线"></label><label>密码<input id="login-password" type="password" autocomplete="current-password" required minlength="10" maxlength="128" placeholder="至少 10 位，请妥善保存"></label><label>昵称（注册时填写）<input id="login-nickname" maxlength="30"></label><p class="hint">忘记密码请联系管理员。</p><div class="error" id="login-error"></div><div class="cloud-actions"><button class="primary" id="login-submit" type="submit">登录</button><button class="secondary" id="register-submit" type="button">注册</button></div></form>');
+    showModal('注册 / 登录','<p class="hint">登录不是必选项。登录后可同步课表、作息和私人待办；仅向搭子共享课表和作息。</p><form id="login-form"><label>用户名<input id="login-name" autocomplete="username" required pattern="[a-zA-Z0-9_]{3,32}" placeholder="3–32 位字母、数字或下划线"></label><label>密码<input id="login-password" type="password" autocomplete="current-password" required minlength="10" maxlength="128" placeholder="至少 10 位，请妥善保存"></label><label>昵称（注册时填写）<input id="login-nickname" maxlength="30"></label><p class="hint">忘记密码请联系管理员。</p><div class="error" id="login-error"></div><div class="cloud-actions"><button class="primary" id="login-submit" type="submit">登录</button><button class="secondary" id="register-submit" type="button">注册</button></div></form>');
     const submit=async register=>{
       if(!$('login-form').reportValidity())return;
       const error=$('login-error'),buttons=[$('login-submit'),$('register-submit')];buttons.forEach(x=>x.disabled=true);
       try{
-        const baseUrl=validBase($('server-url').value.trim()),body={username:$('login-name').value.trim(),password:$('login-password').value};
+        const baseUrl=CLOUD_BASE_URL,body={username:$('login-name').value.trim(),password:$('login-password').value};
         if(register){body.nickname=$('login-nickname').value.trim();if(!body.nickname)throw Error('注册时请填写昵称');}
         cloud={baseUrl};persist();
         const tokens=await api(register?'/auth/register':'/auth/login','POST',body,false);
