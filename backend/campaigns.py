@@ -23,7 +23,11 @@ CHINA = timezone(timedelta(hours=8))
 @router.get('/updates/3.2beta.2/', include_in_schema=False)
 @router.get('/updates/3.2beta.3/', include_in_schema=False)
 def update_page():
-    return FileResponse(Path(__file__).parent/'updates'/'2.1beta.html', headers={'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"})
+    raise HTTPException(410, '此升级页面已下线')
+
+@router.get('/updates/security/', include_in_schema=False)
+def security_page():
+    return FileResponse(Path(__file__).parent/'updates'/'security.html', headers={'Cache-Control': 'no-cache', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"})
 
 class Campaign(m.Base):
     __tablename__ = 'app_campaigns'

@@ -127,6 +127,13 @@ def test_short_answers(client):
     assert client.post('/api/v1/me/security',headers=h,json=body).status_code==200
     assert client.post('/api/v1/auth/recovery/reset',json={'username':'betauser','password':'new-test-password','answer2':'星'}).status_code==200
 
+def test_security_h5_and_retired_update_pages(client):
+    response=client.get('/updates/security/')
+    assert response.status_code==200
+    assert 'starorbit://settings/security' in response.text
+    for version in ['2.1beta','3.2beta.1','3.2beta.2','3.2beta.3']:
+        assert client.get('/updates/'+version+'/').status_code==410
+
 def test_campaign_order_and_delete(client):
     _,h=user(client);csrf=operator(client)
     body={'title':'旧活动','url':'http://example.com','width':88,'height':65,'audience':'all','userIds':[],'startsAt':1,'frequency':'once','enabled':True}

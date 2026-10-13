@@ -1,6 +1,6 @@
 services:
   api:
-    image: xingke-v2-api:3.2beta.3
+    image: xingke-v2-api:3.2beta.4
   public-admin-proxy:
     volumes:
       - /opt/xingke-download/dist/downloads:/srv/downloads:ro

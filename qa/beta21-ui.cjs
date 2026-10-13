@@ -45,6 +45,7 @@ async function bridge(page,mode){await page.addInitScript(({mode})=>{
   }
   assert.equal(await page.locator('main').isVisible(),true);
   if(mode==='existing'){
+   await page.evaluate(()=>openSecuritySettings());await page.waitForSelector('#security-form');await page.click('#close');
    await page.evaluate(()=>{save({...state,todos:[{id:'demo',title:'整理今天的笔记',dueAt:Date.now()+3600000,createdAt:Date.now(),priority:'normal',note:'',completed:false,remind:false,alarmEnabled:false,alarmAt:0}]});showPage('todos');});
    const gap=await page.evaluate(()=>document.querySelector('.reminder-actions').getBoundingClientRect().top-document.querySelector('#todo-list').getBoundingClientRect().bottom);assert.ok(gap>=20,'notification button spacing');
    await page.screenshot({path:'test/qa/beta21/todos.png'});await page.click('[data-toggle="demo"]');assert.ok(await page.locator('.todo-confetti').count()>0);assert.equal(await page.evaluate(()=>state.todos[0].completed),true);
