@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
 from pydantic import Field, model_validator
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, JSON, ForeignKey, select
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, JSON, ForeignKey, select, delete
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from . import main as m
@@ -21,6 +21,7 @@ CHINA = timezone(timedelta(hours=8))
 @router.get('/updates/2.1beta/', include_in_schema=False)
 @router.get('/updates/3.2beta.1/', include_in_schema=False)
 @router.get('/updates/3.2beta.2/', include_in_schema=False)
+@router.get('/updates/3.2beta.3/', include_in_schema=False)
 def update_page():
     return FileResponse(Path(__file__).parent/'updates'/'2.1beta.html', headers={'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"})
 
@@ -118,6 +119,20 @@ def save(data: Config, campaign_id: str='', auth=Depends(authorized), session: S
     session.add(Audit(id=secrets.token_hex(16), admin=auth.username, user_id='', action='campaign_save', created_at=int(time.time())))
     session.commit()
     return info(row)
+
+class DeleteCampaign(Strict):
+    revision: int = Field(ge=1)
+
+@router.post('/admin/api/campaigns/{campaign_id}/delete')
+def remove(campaign_id: str, data: DeleteCampaign, auth=Depends(authorized), session: Session=Depends(m.db)):
+    row = session.scalar(select(Campaign).where(Campaign.id == campaign_id).with_for_update())
+    if not row: raise HTTPException(404, '弹窗不存在')
+    if row.revision != data.revision: raise HTTPException(409, '配置已更新，请刷新后再删除')
+    session.execute(delete(Receipt).where(Receipt.campaign_id == campaign_id))
+    session.delete(row)
+    session.add(Audit(id=secrets.token_hex(16), admin=auth.username, user_id='', action='campaign_delete', created_at=int(time.time())))
+    session.commit()
+    return {'ok': True}
 
 @router.get('/api/v1/campaigns')
 def pending(token=Depends(m.authenticated), session: Session=Depends(m.db)):

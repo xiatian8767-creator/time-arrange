@@ -33,8 +33,8 @@ class Setup(Strict):
     password: str = Field(min_length=10, max_length=128)
     question1: str = Field(min_length=3, max_length=30)
     question2: str = Field(min_length=3, max_length=30)
-    answer1: str = Field(min_length=3, max_length=128)
-    answer2: str = Field(min_length=3, max_length=128)
+    answer1: str = Field(min_length=1, max_length=128)
+    answer2: str = Field(min_length=1, max_length=128)
 
     @model_validator(mode='after')
     def valid(self):
@@ -44,8 +44,8 @@ class Setup(Strict):
             raise ValueError('问题需为 3–30 个字符')
         if normalize(QUESTIONS.get(self.question1, self.question1)) == normalize(QUESTIONS.get(self.question2, self.question2)):
             raise ValueError('请设置两个不同的问题')
-        if min(len(normalize(self.answer1)), len(normalize(self.answer2))) < 3:
-            raise ValueError('answers too short')
+        if not normalize(self.answer1) or not normalize(self.answer2):
+            raise ValueError('答案不能为空')
         return self
 
 class Username(Strict):

@@ -119,3 +119,26 @@ def test_recovery_accepts_only_second_answer_and_rejects_empty(client):
     body={'username':'betauser','password':'new-test-password'}
     assert client.post('/api/v1/auth/recovery/reset',json=body).status_code==400
     assert client.post('/api/v1/auth/recovery/reset',json={**body,'answer1':'wrong','answer2':'secret words'}).status_code==200
+
+def test_short_answers(client):
+    _,h=user(client)
+    body={'password':'old-test-password','question1':'place','question2':'phrase','answer1':'夏天','answer2':'星'}
+    assert client.post('/api/v1/me/security',headers=h,json={**body,'answer1':'　 '}).status_code==422
+    assert client.post('/api/v1/me/security',headers=h,json=body).status_code==200
+    assert client.post('/api/v1/auth/recovery/reset',json={'username':'betauser','password':'new-test-password','answer2':'星'}).status_code==200
+
+def test_campaign_order_and_delete(client):
+    _,h=user(client);csrf=operator(client)
+    body={'title':'旧活动','url':'http://example.com','width':88,'height':65,'audience':'all','userIds':[],'startsAt':1,'frequency':'once','enabled':True}
+    old=client.post('/admin/api/campaigns',headers=csrf,json=body).json()
+    new=client.post('/admin/api/campaigns',headers=csrf,json={**body,'title':'新活动','startsAt':2}).json()
+    assert client.get('/api/v1/campaigns',headers=h).json()['campaign']['id']==new['id']
+    client.post('/api/v1/campaigns/'+new['id']+'/displayed',headers=h,json={})
+    assert client.get('/api/v1/campaigns',headers=h).json()['campaign']['id']==old['id']
+    path='/admin/api/campaigns/'+new['id']+'/delete'
+    assert client.post(path,json={'revision':1}).status_code==403
+    assert client.post(path,headers=csrf,json={'revision':2}).status_code==409
+    assert client.post(path,headers=csrf,json={'revision':1}).status_code==200
+    with Session(m.engine) as s:
+        assert s.get(Campaign,new['id']) is None
+        assert s.scalars(select(Receipt).where(Receipt.campaign_id==new['id'])).all()==[]
