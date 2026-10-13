@@ -14,7 +14,7 @@ async function bridge(page,mode){await page.addInitScript(({mode})=>{
   else if(r.path==='/api/v1/me/data')data=r.method==='PUT'?{revision:1}:{revision:0,document:null,security:{required:mode==='register'}};
   else if(r.path==='/api/v1/partner')data={partner:null};
   else if(r.path==='/api/v1/auth/recovery/questions')data={questions:['测试问题一','测试问题二']};
-  else if(r.path==='/api/v1/campaigns')data={campaign:{id:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',title:'测试活动',url:'https://example.com/',width:88,height:65},period:'once'};
+  else if(r.path.startsWith('/api/v1/campaigns')&&r.method!=='POST'){const skip=new URL('https://mock'+r.path).searchParams.get('skip')||'';data={campaign:(window.qaQueue||[{id:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',title:'测试活动',url:'https://example.com/',width:88,height:65}]).find(c=>!skip.split(',').includes(c.id))||null,period:'once'};}
   else data={ok:true};setTimeout(()=>onlineResult(id,status,JSON.stringify(data),true),10);
  }};
  },{mode});}
@@ -56,6 +56,12 @@ async function bridge(page,mode){await page.addInitScript(({mode})=>{
    await page.waitForFunction(()=>!document.querySelector('#ai-send').disabled);await page.fill('#ai-input','帮我看看今天的待办');await page.click('#ai-send');await page.waitForFunction(()=>!document.querySelector('#ai-send').disabled);
    const ai=await page.evaluate(()=>qaRequests.filter(r=>r.target==='ai'));assert.ok(Array.isArray(ai[0].body.messages.at(-1).content));assert.equal(typeof ai[1].body.messages.at(-1).content,'string');assert.ok(ai[1].body.messages[0].content.includes('整理今天的笔记'));
    await page.screenshot({path:'test/qa/beta21/chat.png'});await page.click('#ai-close');await page.waitForTimeout(3100);await page.evaluate(()=>appEntered());await page.waitForTimeout(200);const before=await page.evaluate(()=>qaCampaigns.length);await page.waitForTimeout(3100);await page.evaluate(()=>appEntered());await page.waitForTimeout(200);assert.equal(await page.evaluate(()=>qaCampaigns.length),before);
+  }
+  if(mode==='existing'){
+   await page.evaluate(()=>{qaQueue=['cccccccccccccccccccccccccccccccc','dddddddddddddddddddddddddddddddd'].map(id=>({id,title:'队列测试',url:'https://example.com/',width:88,height:65}));qaCampaigns=[];campaignClosed('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');});
+   await page.waitForFunction(()=>qaCampaigns.length===1);await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>qaCampaigns.length),1);
+   await page.evaluate(()=>campaignClosed(qaCampaigns[0].id));await page.waitForFunction(()=>qaCampaigns.length===2);
+   await page.waitForTimeout(100);await page.evaluate(()=>campaignClosed(qaCampaigns[1].id));await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>qaCampaigns.length),2);
   }
   assert.deepEqual(errors,[],mode);await page.close();
  }

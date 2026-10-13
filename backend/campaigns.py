@@ -4,7 +4,7 @@ import secrets
 import time
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlsplit
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pathlib import Path
 from pydantic import Field, model_validator
@@ -139,11 +139,12 @@ def remove(campaign_id: str, data: DeleteCampaign, auth=Depends(authorized), ses
     return {'ok': True}
 
 @router.get('/api/v1/campaigns')
-def pending(token=Depends(m.authenticated), session: Session=Depends(m.db)):
+def pending(skip: str=Query(default='', max_length=6600), token=Depends(m.authenticated), session: Session=Depends(m.db)):
     now = int(time.time()*1000)
+    skipped=set(skip.split(','))
     for row in session.scalars(select(Campaign).where(Campaign.enabled == True, Campaign.starts_at <= now).order_by(Campaign.starts_at.desc(), Campaign.id)).all():
         key = period(row, now)
-        if eligible(row, token.user_id, now) and not session.get(Receipt, (row.id, token.user_id, key)):
+        if row.id not in skipped and eligible(row, token.user_id, now) and not session.get(Receipt, (row.id, token.user_id, key)):
             return {'campaign': {k:v for k,v in info(row).items() if k not in ('userIds', 'audience')}, 'period': key}
     return {'campaign': None}
 

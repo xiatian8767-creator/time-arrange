@@ -62,7 +62,7 @@ final class CampaignDialog {
                 @Override public void onPageFinished(WebView view,String target){if(!failed[0]&&!delivered[0]&&safe(target)){delivered[0]=true;timer.removeCallbacks(timeout);status.setVisibility(android.view.View.GONE);reply(id,true);}}
             });
             popup.setContentView(shell);popup.setCanceledOnTouchOutside(false);close.setOnClickListener(v->popup.dismiss());
-            popup.setOnDismissListener(d->{timer.removeCallbacks(timeout);page.stopLoading();page.destroy();dialog=null;if(!delivered[0])reply(id,false);});
+            popup.setOnDismissListener(d->{timer.removeCallbacks(timeout);page.stopLoading();page.destroy();dialog=null;if(!delivered[0])reply(id,false);if(!activity.isDestroyed())host.evaluateJavascript("window.campaignClosed&&window.campaignClosed("+JSONObject.quote(id)+")",null);});
             Window window=popup.getWindow();window.setBackgroundDrawableResource(android.R.color.transparent);window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);window.setDimAmount(.4f);
             popup.show();android.util.DisplayMetrics metrics=activity.getResources().getDisplayMetrics();window.setLayout(metrics.widthPixels*Math.max(60,Math.min(96,item.optInt("width",88)))/100,metrics.heightPixels*Math.max(30,Math.min(90,item.optInt("height",65)))/100);
             timer.postDelayed(timeout,25000);page.loadUrl(url);

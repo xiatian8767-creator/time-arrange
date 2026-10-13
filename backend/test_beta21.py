@@ -140,6 +140,7 @@ def test_campaign_order_and_delete(client):
     old=client.post('/admin/api/campaigns',headers=csrf,json=body).json()
     new=client.post('/admin/api/campaigns',headers=csrf,json={**body,'title':'新活动','startsAt':2}).json()
     assert client.get('/api/v1/campaigns',headers=h).json()['campaign']['id']==new['id']
+    assert client.get('/api/v1/campaigns?skip='+new['id'],headers=h).json()['campaign']['id']==old['id']
     client.post('/api/v1/campaigns/'+new['id']+'/displayed',headers=h,json={})
     assert client.get('/api/v1/campaigns',headers=h).json()['campaign']['id']==old['id']
     path='/admin/api/campaigns/'+new['id']+'/delete'
