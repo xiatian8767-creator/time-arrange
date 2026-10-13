@@ -18,3 +18,13 @@
 #ai-form{padding-top:12px}#ai-input{min-height:58px}.ai-privacy{font-size:10px!important}
 .todo-confetti{position:fixed;z-index:150;pointer-events:none;width:7px;height:12px;border-radius:2px;will-change:transform,opacity}
 @media(prefers-reduced-motion:reduce){.todo-confetti{display:none}}
+.security-card{min-width:0;margin:22px 0 0;padding:16px;border:1px solid #e2e5eb;border-radius:20px;background:#fff}
+.security-card legend{padding:0 8px;color:#1c2945;font-size:13px;font-weight:600}
+.security-card legend span{color:#aa8d57;font-size:11px;letter-spacing:1px;margin-right:8px}
+#security-form .security-card input{background:#f8f8fa;border:1px solid #e8eaf0;border-radius:12px;font-size:14px;width:100%}
+#security-form .security-card label{font-size:12px;color:#69768a;margin:12px 0 6px}
+.security-suggestions{margin-top:8px}.security-suggestions summary{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:9px 2px;color:#758097;font-size:12px;cursor:pointer;min-height:40px}
+.security-suggestions summary::-webkit-details-marker{display:none}.security-suggestions[open] summary span{transform:rotate(45deg)}
+.security-suggestions>div{display:grid;gap:5px;padding:3px 0 9px}
+.security-suggestions button{width:100%;text-align:left;font-size:13px;line-height:1.5;font-weight:400;color:#34425a;background:#f0f3f8;border:0;border-radius:10px;padding:11px 12px;min-height:42px}
+.security-suggestions button:active{background:#e3e9f3}.security-suggestions button:focus-visible{outline:2px solid #b69a65;outline-offset:2px}

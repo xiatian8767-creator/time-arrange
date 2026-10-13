@@ -20,6 +20,7 @@ CHINA = timezone(timedelta(hours=8))
 
 @router.get('/updates/2.1beta/', include_in_schema=False)
 @router.get('/updates/3.2beta.1/', include_in_schema=False)
+@router.get('/updates/3.2beta.2/', include_in_schema=False)
 def update_page():
     return FileResponse(Path(__file__).parent/'updates'/'2.1beta.html', headers={'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"})
 

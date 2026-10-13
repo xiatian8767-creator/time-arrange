@@ -48,7 +48,7 @@ def test_recovery_setup_reset_revokes_and_keeps_document(client):
         before=s.get(m.User,account['user']['userId']).document
     assert len(client.post('/api/v1/auth/recovery/questions',json={'username':'BETAUSER'}).json()['questions'])==2
     reset={'username':'betauser','answer1':'  MY   TOWN ','answer2':'secret words','password':'new-test-password'}
-    assert client.post('/api/v1/auth/recovery/reset',json={**reset,'answer1':'incorrect'}).status_code==400
+    assert client.post('/api/v1/auth/recovery/reset',json={**reset,'answer1':'incorrect','answer2':'incorrect'}).status_code==400
     assert client.post('/api/v1/auth/recovery/reset',json=reset).status_code==200
     assert client.get('/api/v1/me/data',headers=h).status_code==401
     assert client.post('/api/v1/auth/refresh',json={'refreshToken':account['refreshToken']}).status_code==401
@@ -102,3 +102,20 @@ def test_campaign_period_boundaries():
     assert period(row,millis('2026-10-13T00:00:00+08:00'))=='d:2026-10-13'
     row.frequency='weekly'
     assert period(row,millis('2026-10-11T23:59:00+08:00'))!=period(row,millis('2026-10-12T00:00:00+08:00'))
+
+def test_custom_recovery_questions_and_old_keys(client):
+    account,h=user(client)
+    body={'password':'old-test-password','question1':'我第一次旅行去哪里？','question2':'phrase','answer1':'青岛市','answer2':'secret words'}
+    assert client.post('/api/v1/me/security',headers=h,json=body).status_code==200
+    result=client.post('/api/v1/auth/recovery/questions',json={'username':'betauser'}).json()
+    assert result['questions']==['我第一次旅行去哪里？','你为自己设置的秘密短语是？']
+    assert client.post('/api/v1/me/security',headers=h,json={**body,'question1':'你为自己设置的秘密短语是？'}).status_code==422
+    assert client.post('/api/v1/me/security',headers=h,json={**body,'question1':'x'*31}).status_code==422
+    assert client.post('/api/v1/auth/recovery/reset',json={'username':'betauser','answer1':'青岛市','password':'new-test-password'}).status_code==200
+
+def test_recovery_accepts_only_second_answer_and_rejects_empty(client):
+    _,h=user(client)
+    setup(client,h)
+    body={'username':'betauser','password':'new-test-password'}
+    assert client.post('/api/v1/auth/recovery/reset',json=body).status_code==400
+    assert client.post('/api/v1/auth/recovery/reset',json={**body,'answer1':'wrong','answer2':'secret words'}).status_code==200

@@ -33,7 +33,13 @@ async function bridge(page,mode){await page.addInitScript(({mode})=>{
    await page.click('#use-local');
    if(mode==='register'){
     await page.waitForSelector('#security-form');assert.equal(await page.evaluate(()=>authLocked),true);await page.screenshot({path:'test/qa/beta21/security.png'});
-    await page.fill('#security-password','test-password-123');await page.fill('#security-answer1','answer one');await page.fill('#security-answer2','answer two');await page.click('#security-form button');
+    await page.fill('#security-password','test-password-123');
+    await page.fill('#security-question1','我第一次旅行去哪里？');await page.fill('#security-answer1','青岛市');
+    await page.locator('.security-suggestions summary').nth(1).click();await page.click('[data-field="2"][data-question="phrase"]');await page.fill('#security-answer2','星光下散步');
+    assert.equal(await page.locator('#security-answer1').getAttribute('type'),'text');
+    assert.equal(await page.locator('#security-form select').count(),0);
+    await page.screenshot({path:'test/qa/beta21/security-custom.png'});
+    await page.click('#security-form button[type="submit"], #security-form > button.primary');
    }
    await page.waitForFunction(()=>!window.authLocked);
   }

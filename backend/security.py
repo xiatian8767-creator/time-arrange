@@ -31,15 +31,19 @@ def normalize(value):
 
 class Setup(Strict):
     password: str = Field(min_length=10, max_length=128)
-    question1: str
-    question2: str
+    question1: str = Field(min_length=3, max_length=30)
+    question2: str = Field(min_length=3, max_length=30)
     answer1: str = Field(min_length=3, max_length=128)
     answer2: str = Field(min_length=3, max_length=128)
 
     @model_validator(mode='after')
     def valid(self):
-        if self.question1 not in QUESTIONS or self.question2 not in QUESTIONS or self.question1 == self.question2:
-            raise ValueError('select two different questions')
+        self.question1 = self.question1.strip()
+        self.question2 = self.question2.strip()
+        if min(len(self.question1), len(self.question2)) < 3 or any(ord(c) < 32 for c in self.question1 + self.question2):
+            raise ValueError('问题需为 3–30 个字符')
+        if normalize(QUESTIONS.get(self.question1, self.question1)) == normalize(QUESTIONS.get(self.question2, self.question2)):
+            raise ValueError('请设置两个不同的问题')
         if min(len(normalize(self.answer1)), len(normalize(self.answer2))) < 3:
             raise ValueError('answers too short')
         return self
@@ -48,8 +52,8 @@ class Username(Strict):
     username: str = Field(pattern=r'^[a-zA-Z0-9_]{3,32}$')
 
 class Reset(Username):
-    answer1: str = Field(min_length=3, max_length=128)
-    answer2: str = Field(min_length=3, max_length=128)
+    answer1: str = Field(default='', max_length=128)
+    answer2: str = Field(default='', max_length=128)
     password: str = Field(min_length=10, max_length=128)
 
 @router.get('/me/security')
@@ -82,7 +86,7 @@ def questions(data: Username, session: Session=Depends(m.db)):
     row = session.get(Recovery, user.id) if user else None
     if not row or not row.answer1:
         raise HTTPException(400, '账号不存在或尚未设置保密问题，请核对账号或联系管理员')
-    return {'questions': [QUESTIONS[row.question1], QUESTIONS[row.question2]]}
+    return {'questions': [QUESTIONS.get(row.question1, row.question1), QUESTIONS.get(row.question2, row.question2)]}
 
 @router.post('/auth/recovery/reset')
 def reset(data: Reset, session: Session=Depends(m.db)):
@@ -92,12 +96,14 @@ def reset(data: Reset, session: Session=Depends(m.db)):
     now = int(time.time())
     if row and row.locked_until > now:
         raise HTTPException(429, '尝试次数过多，请 15 分钟后再试')
-    valid = bool(row and row.answer1)
-    for hashed, answer in [(row.answer1 if valid else m.DUMMY_HASH, data.answer1), (row.answer2 if valid else m.DUMMY_HASH, data.answer2)]:
+    configured = bool(row and row.answer1 and row.answer2)
+    valid = False
+    for hashed, answer in [(row.answer1 if configured else m.DUMMY_HASH, data.answer1), (row.answer2 if configured else m.DUMMY_HASH, data.answer2)]:
         try:
             m.password_work(m.passwords.verify, hashed, normalize(answer))
+            valid = valid or (configured and bool(normalize(answer)))
         except VerificationError:
-            valid = False
+            pass
     if not valid:
         if row:
             row.failures = (row.failures if row.locked_until == 0 or row.locked_until > now else 0) + 1
