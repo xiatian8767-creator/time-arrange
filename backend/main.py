@@ -164,6 +164,8 @@ def register(data: Registration, session: Session = Depends(db)):
     except IntegrityError:
         session.rollback()
         raise HTTPException(409, "用户名已使用")
+    from .security import Recovery
+    session.add(Recovery(user_id=user.id))
     return tokens(session, user)
 
 
@@ -198,7 +200,8 @@ def logout(token=Depends(authenticated), session: Session = Depends(db)):
 @app.get("/api/v1/me/data")
 def get_data(token=Depends(authenticated), session: Session = Depends(db)):
     user = session.get(User, token.user_id)
-    return {"user": profile(user), "revision": user.revision, "document": user.document}
+    from .security import state as recovery_state
+    return {"user": profile(user), "revision": user.revision, "document": user.document, "security": recovery_state(session, user.id)}
 
 
 @app.put("/api/v1/me/data")
@@ -311,3 +314,7 @@ app.include_router(admin_router)
 from .feedback import router as feedback_router, admin_router as feedback_admin_router
 app.include_router(feedback_router)
 app.include_router(feedback_admin_router)
+from .security import router as security_router
+from .campaigns import router as campaigns_router
+app.include_router(security_router)
+app.include_router(campaigns_router)

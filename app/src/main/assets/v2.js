@@ -13,6 +13,7 @@
   const rawState=()=>JSON.stringify(state),isDirty=()=>rawState()!==cloud.synced;
   function accountScope(c){return c.baseUrl+'#'+c.user.userId;}
   function persist(){write('cloud',cloud);}
+  function lockAccount(locked){window.authLocked=locked;document.body.classList.toggle('auth-required',locked);for(const node of document.querySelectorAll('main,.bottom-nav,#ai-fab'))node.inert=locked;}
   window.onlineResult=(id,status,body,json)=>{const pending=requests.get(id);if(!pending)return;requests.delete(id);clearTimeout(pending.timer);let data;try{data=json?JSON.parse(body):{detail:body};}catch(e){data={detail:'服务器返回格式不正确'};}if(status>=200&&status<300)pending.resolve(data);else{const error=Error(typeof data.detail==='string'?data.detail:'请求失败（'+status+'）');error.status=status;pending.reject(error);}};
   function transport(req){if(!native)return Promise.reject(Error('联网和 AI 功能请在安卓安装包中使用；浏览器仅提供离线预览'));return new Promise((resolve,reject)=>{const id=uid(),timer=setTimeout(()=>{requests.delete(id);reject(Error('请求超时，请重试'));},105000);requests.set(id,{resolve,reject,timer});Online.request(id,JSON.stringify(req));});}
   let refreshing=null;
@@ -22,7 +23,7 @@
     catch(e){
       if(e.status===401&&retry&&cloud.refreshToken){
         if(!refreshing)refreshing=transport({target:'cloud',path:'/api/v1/auth/refresh',method:'POST',body:{refreshToken:cloud.refreshToken}}).then(tokens=>{if(epoch!==generation)throw Error('账号已切换');cloud={...cloud,...tokens};persist();}).finally(()=>refreshing=null);
-        await refreshing;if(epoch!==generation)throw Error('账号已切换');return api(path,method,body,false);
+        try{await refreshing;}catch(refreshError){if(refreshError.status===401&&epoch===generation){cloud.needsLogin=true;persist();lockAccount(true);loginForm();}throw refreshError;}if(epoch!==generation)throw Error('账号已切换');return api(path,method,body,false);
       }throw e;
     }
   }
@@ -70,20 +71,22 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 2.1.0-beta.4 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 2.1beta · 探索版';
 
   };
   function accountSettings(){
     if(!cloud.user){loginForm();return;}
     showModal('账号与同步','<div class="account-banner"><strong>'+esc(cloud.user.nickname)+'</strong><small>用户 ID：'+esc(cloud.user.userId)+'</small><small>'+esc(syncStatus)+'</small></div><p class="hint">当前数据属于此账号；退出后恢复未登录时的本机数据。待办仅本人可读取。</p><button id="cloud-sync" class="setting-action">立即同步</button><button id="cloud-partner" class="setting-action">管理在线搭子</button><button id="cloud-logout" class="setting-action">退出登录</button>');
     $('cloud-sync').onclick=()=>sync(true);$('cloud-partner').onclick=window.openOnlinePartner;
+    $('cloud-logout').insertAdjacentHTML('beforebegin','<button id="security-settings" class="setting-action">保密问题<small>设置或更换找回密码的答案</small></button>');$('security-settings').onclick=()=>securityForm(false);
     $('cloud-logout').onclick=()=>{
-      showModal('退出登录？','<p class="hint">账号数据仍保留在本机独立空间，退出后显示访客数据。'+(isDirty()?'你还有未同步修改，请先导出备份或同步。':'')+'</p><button id="logout-export" class="setting-action">导出当前备份</button><button id="logout-confirm" class="danger">退出并恢复访客数据</button>');
-      $('logout-export').onclick=exportData;$('logout-confirm').onclick=async()=>{if(syncing)return notify('正在同步，请稍后');$('logout-confirm').disabled=true;let revoked=true;try{await api('/auth/logout','POST',{});}catch(e){revoked=false;}try{const guest=cached('guest');activate({baseUrl:cloud.baseUrl},guest?JSON.parse(guest):C.defaults(),'guest');closeModal();syncStatus='离线可用';notify(revoked?'已退出，恢复访客数据':'已本地退出；离线会话将在服务器到期失效');}catch(e){notify(e.message);}};
+      showModal('退出登录？','<p class="hint">账号数据保留在本机，重新登录后可继续使用。'+(isDirty()?'你还有未同步修改，请先导出备份或同步。':'')+'</p><button id="logout-export" class="setting-action">导出当前备份</button><button id="logout-confirm" class="danger">退出登录</button>');
+      $('logout-export').onclick=exportData;$('logout-confirm').textContent='退出登录';$('logout-confirm').onclick=async()=>{if(syncing)return notify('正在同步，请稍后');$('logout-confirm').disabled=true;try{await api('/auth/logout','POST',{});}catch(e){}try{const guest=cached('guest');activate({baseUrl:cloud.baseUrl},guest?JSON.parse(guest):C.defaults(),'guest');lockAccount(true);loginForm();syncStatus='待登录';}catch(e){notify(e.message);}};
     };
   }
   function loginForm(){
-    showModal('注册 / 登录','<p class="hint">登录不是必选项。登录后可同步课表、作息和私人待办；仅向搭子共享课表和作息。</p><form id="login-form"><label>用户名<input id="login-name" autocomplete="username" required pattern="[a-zA-Z0-9_]{3,32}" placeholder="3–32 位字母、数字或下划线"></label><label>密码<input id="login-password" type="password" autocomplete="current-password" required minlength="10" maxlength="128" placeholder="至少 10 位，请妥善保存"></label><label>昵称（注册时填写）<input id="login-nickname" maxlength="30"></label><p class="hint">忘记密码请联系管理员。</p><div class="error" id="login-error"></div><div class="cloud-actions"><button class="primary" id="login-submit" type="submit">登录</button><button class="secondary" id="register-submit" type="button">注册</button></div></form>');
+    showModal('欢迎来到 Star Orbit','<p class="hint">登录后，开始安排你的日常。</p><form id="login-form"><label>用户名<input id="login-name" autocomplete="username" required pattern="[a-zA-Z0-9_]{3,32}" placeholder="3–32 位字母、数字或下划线"></label><label>密码<input id="login-password" type="password" autocomplete="current-password" required minlength="10" maxlength="128" placeholder="至少 10 位"></label><label>昵称（注册时填写）<input id="login-nickname" maxlength="30"></label><button type="button" class="text-action" id="forgot-password">忘记密码？</button><div class="error" id="login-error" role="alert"></div><div class="cloud-actions"><button class="primary" id="login-submit" type="submit">登录</button><button class="secondary" id="register-submit" type="button">注册</button></div></form>');
+    $('forgot-password').onclick=recoveryForm;
     const submit=async register=>{
       if(!$('login-form').reportValidity())return;
       const error=$('login-error'),buttons=[$('login-submit'),$('register-submit')];buttons.forEach(x=>x.disabled=true);
@@ -94,7 +97,7 @@
         const tokens=await api(register?'/auth/register':'/auth/login','POST',body,false);
         const candidate={baseUrl,...tokens};
         const remote=await transport({target:'cloud',path:'/api/v1/me/data',method:'GET',token:tokens.accessToken});
-        selectInitial(candidate,remote);
+        candidate.securityRequired=Boolean(remote.security&&remote.security.required);selectInitial(candidate,remote);
       }catch(e){error.textContent=e.message;}finally{buttons.forEach(x=>x.disabled=false);}
     };
     $('login-form').onsubmit=e=>{e.preventDefault();submit(false);};$('register-submit').onclick=()=>submit(true);
@@ -103,7 +106,7 @@
     const target=accountScope(candidate),stored=cached(target),local=stored?C.validate(JSON.parse(stored)):(scope==='guest'?C.validate(state):C.defaults());
     const localLabel=stored?'此账号的本机副本':'当前访客数据';
     showModal('选择首次同步方向','<p class="hint">'+localLabel+'：'+summary(local)+'<br>云端：'+summary(remote.document)+'</p><p class="hint">不自动合并或覆盖。访客原始数据会保留在独立空间，退出登录后可恢复。</p><button id="use-cloud" class="setting-action">'+(remote.document?'使用云端数据':'以空白账号开始')+'</button><button id="use-local" class="setting-action">将'+localLabel+'同步到这个账号</button>');
-    const choose=useLocal=>{try{const doc=useLocal?local:(remote.document||C.defaults());activate({...candidate,revision:remote.revision,synced:remote.document?JSON.stringify(C.validate(remote.document)):null},doc,target);closeModal();syncStatus='待同步';sync(true);}catch(e){notify(e.message);}};
+    const choose=useLocal=>{try{const doc=useLocal?local:(remote.document||C.defaults());activate({...candidate,revision:remote.revision,synced:remote.document?JSON.stringify(C.validate(remote.document)):null},doc,target);syncStatus='待同步';if(candidate.securityRequired){lockAccount(true);securityForm(true);}else{lockAccount(false);closeModal();sync(true);checkCampaign();}}catch(e){notify(e.message);}};
     $('use-cloud').onclick=()=>choose(false);$('use-local').onclick=()=>choose(true);
   }
 
@@ -136,15 +139,14 @@
     $('ai-key-delete').onclick=()=>{write('ai',{});closeModal();notify('Key 已删除');};
   }
   function message(text,role='assistant'){const el=document.createElement('div');el.className='ai-message '+role;el.textContent=text;$('ai-messages').appendChild(el);$('ai-welcome').hidden=true;el.scrollIntoView({block:'end'});return el;}
-  function openAI(){closeModal();$('ai-panel').hidden=false;document.body.style.overflow='hidden';$('ai-welcome').hidden=Boolean($('ai-messages').children.length);}
+  function openAI(){if(window.authLocked)return;closeModal();$('ai-panel').hidden=false;document.body.style.overflow='hidden';$('ai-welcome').hidden=Boolean($('ai-messages').children.length);}
   function closeAI(){$('ai-panel').hidden=true;document.body.style.overflow='';$('ai-fab').focus();}
   $('ai-close').onclick=closeAI;$('ai-config').onclick=aiSettings;
   const oldBack=window.handleBack;window.handleBack=()=>{if(!$('modal').hidden)return oldBack();if(!$('ai-panel').hidden){closeAI();return true;}return oldBack();};
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('modal').hidden&&!$('ai-panel').hidden)closeAI();});
-  window.receiveAIPhoto=data=>{photo=data;$('ai-photo').src=data;$('ai-photo-preview').hidden=false;if(!$('ai-input').value)$('ai-input').value='请识别照片中的课表，生成课表和作息修改建议。不确定的文字和节次请列出，不要猜测。';};
+  window.receiveAIPhoto=data=>{photo=data;$('ai-photo').src=data;$('ai-photo-preview').hidden=false;};
   $('ai-upload').onclick=()=>native?Online.pickPhoto(false):notify('请在安卓应用中选择照片');$('ai-camera').onclick=()=>native?Online.pickPhoto(true):notify('请在安卓应用中拍照');
   $('ai-photo-remove').onclick=()=>{photo=null;$('ai-photo').removeAttribute('src');$('ai-photo-preview').hidden=true;};
-  ['ai-context-schedule','ai-context-todos'].forEach(id=>$(id).onchange=()=>{history=[];});
   $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');history=[];$('ai-messages').replaceChildren();$('ai-photo-remove').click();$('ai-welcome').hidden=false;};
   function readable(value,slots){
     if(!value)return '无';
@@ -160,16 +162,17 @@
   $('ai-form').onsubmit=async e=>{
     e.preventDefault();if(aiBusy)return;
     const config=native?read('ai'):memoryAI;if(!config.key){aiSettings();return;}
-    const prompt=$('ai-input').value.trim();if(!prompt)return;
-    const base=rawState(),generation=epoch,permissions={schedule:$('ai-context-schedule').checked,todos:$('ai-context-todos').checked};
+    const prompt=$('ai-input').value.trim(),sentPhoto=photo;if(!prompt&&!sentPhoto)return;
+    const base=rawState(),generation=epoch,permissions={schedule:true,todos:true};
     const context={version:2,now:Date.now(),localTime:new Date().toString()};if(permissions.schedule){context.slots=state.slots;context.courses=state.courses;}if(permissions.todos)context.todos=state.todos;
     const system='你是Star Orbit助手。仅输出 JSON 对象：{"message":"中文回答","warnings":["不确定信息"],"operations":[]}。聊天时 operations 为空。所有操作都是等待用户确认的建议，不要宣称已执行。只使用用户授权提供的数据。不确定的图片文字不得编造。支持 type: course.create/course.update/course.delete/todo.create/todo.update/todo.delete（字段 id，value 不含 id）；新记录生成唯一字符串 id，update 只列变化字段。course value 包含 day(1-7),start/end(时间段id),name,color(#rrggbb),room,note；todo value 包含 title,dueAt(毫秒),createdAt(毫秒),priority(low/normal/high),note,completed,remind,alarmEnabled(布尔，默认false),alarmAt(毫秒，默认0)。只有用户明确要求闹钟才开启alarmEnabled，并提供alarmAt；普通提醒只设remind。更换作息或整张课表只允许 schedule.replace，带完整 slots 和 courses 数组（课程含 id），保留待办。slots 包含 id,start/end(HH:mm)，活动段可含 kind:activity,label。时间不重叠，课程不冲突。课程与待办字段长度限制分别遵循名称30/标题80/地点60/备注500。当前授权上下文 JSON：'+JSON.stringify(context);
-    const content=photo?[{type:'text',text:prompt},{type:'image_url',image_url:{url:photo}}]:prompt;
-    message(prompt+(photo?'\n[已附课表照片]':''),'user');$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
+    const content=sentPhoto?[{type:'text',text:prompt||'请查看图片，识别其中的安排；不确定的内容先询问，所有修改先给出建议。'},{type:'image_url',image_url:{url:sentPhoto}}]:prompt;
+    const sent=message(prompt,'user');if(sentPhoto){const img=document.createElement('img');img.src=sentPhoto;img.alt='本条消息的图片';img.className='ai-sent-photo';sent.append(img);}photo=null;$('ai-photo-preview').hidden=true;$('ai-photo').removeAttribute('src');$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
     try{
       // Conversation contains only user prompts / answers, not prior private contexts or images.
       const contract='补充协议：权限为 '+JSON.stringify(permissions)+'。未授权的类型不得生成操作，请在 message 中提示勾选对应权限。create 不需要 id，由客户端生成；update/delete 的 id 必须来自上下文已有记录。待办 dueAt 优先使用带时区的 ISO 8601 日期时间，例如 2026-10-04T09:00:00+08:00，禁止秒时间戳。用户未指定具体时刻时先询问，不生成待办。缺省 priority=normal、completed=false、remind=false、note=""，只有明确要求提醒才设置 remind=true。操作示例：{"message":"请预览确认","warnings":[],"operations":[{"type":"todo.create","value":{"title":"喝一杯牛奶","dueAt":"2026-10-04T09:00:00+08:00"}}]}。示例时间仅展示格式，实际日期根据当前时间和用户要求计算。';
-      const messages=[{role:'system',content:system+'\n'+contract},...history.slice(-8),{role:'user',content}];
+      const scheduleContract='当前客户端支持修改作息，不要沿用历史回复中的不支持结论。仅调整作息请使用 {"type":"slots.replace","slots":[完整时间段]}，保留已有课程引用的 id；按图片导入新作息与课程用 {"type":"schedule.replace","slots":[完整时间段],"courses":[完整课程]}。整表替换必须保留用户未要求删除的现有课程并适配新节次；不能确定映射就询问。也可先 slots.replace 再逐条 course.create；新增课程 id 可省略，color/room/note 可省略。示例：{"type":"schedule.replace","slots":[{"id":"s1","start":"08:00","end":"08:45"}],"courses":[{"day":1,"start":"s1","end":"s1","name":"数学"}]}。图片任务应同时识别节次时间和课程，不能因为现有作息缺少节次就拒绝。校验错误应修正字段和操作，不要声称客户端没有明确列出的能力。';
+      const messages=[{role:'system',content:system+'\n'+contract+'\n'+scheduleContract},...history.slice(-8),{role:'user',content}];
       const requestAI=()=>transport({target:'ai',body:{model:config.model,messages,stream:false,max_tokens:8192,response_format:{type:'json_object'}}});
       let response=await requestAI();
       if(generation!==epoch)throw Error('账号已切换，已丢弃此回复');
@@ -197,5 +200,28 @@
   fab.onpointermove=e=>{if(!drag||drag.id!==e.pointerId)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>5)drag.moved=true;if(drag.moved)place(drag.left+dx,drag.top+dy);};
   fab.onpointerup=()=>{if(!drag)return;suppress=drag.moved;if(drag.moved){const r=fab.getBoundingClientRect();write('position',{x:r.left,y:r.top});}drag=null;};fab.onpointercancel=()=>{drag=null;suppress=true;};
   fab.onclick=()=>{if(suppress){suppress=false;return;}openAI();};window.addEventListener('resize',()=>{const r=fab.getBoundingClientRect();place(r.left,r.top);});
-  if(cloud.user&&!loadingError)setTimeout(()=>sync(),500);
+  const SECURITY_QUESTIONS={place:'你记忆深刻的一个地方是？',phrase:'你为自己设置的秘密短语是？',character:'你喜欢的一个角色是？',memory:'你想记住的一件小事是？',object:'对你有特别意义的一件物品是？'};
+  function securityForm(required){
+    const options=Object.entries(SECURITY_QUESTIONS).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('');
+    showModal(required?'设置保密问题':'保密问题','<p class="hint">记住这两个答案，忘记密码时可以自己找回。</p><form id="security-form"><label>当前密码<input id="security-password" type="password" required minlength="10" maxlength="128" autocomplete="current-password"></label>'+[1,2].map(i=>'<label>问题 '+i+'<select id="security-question'+i+'">'+options+'</select></label><label>答案 '+i+'<input id="security-answer'+i+'" type="password" required minlength="3" maxlength="128" autocomplete="off" placeholder="至少 3 个字符"></label>').join('')+'<div id="security-error" class="error" role="alert"></div><button class="primary wide-action">保存</button></form>'+(required?'<button id="security-return" class="text-action">换个账号登录</button>':''));
+    $('security-question2').value='phrase';
+    if(required)$('security-return').onclick=()=>{cloud.needsLogin=true;persist();loginForm();};
+    $('security-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{await api('/me/security','POST',{password:$('security-password').value,question1:$('security-question1').value,question2:$('security-question2').value,answer1:$('security-answer1').value,answer2:$('security-answer2').value});cloud.securityRequired=false;persist();lockAccount(false);closeModal();notify('保密问题已保存');sync();checkCampaign();}catch(err){if($('security-error'))$('security-error').textContent=err.message;}finally{button.disabled=false;}};
+  }
+  function recoveryForm(){
+    showModal('找回密码','<p class="hint">回答你设置的保密问题，重新设置密码。</p><form id="recovery-form"><label>用户名<input id="recovery-name" required pattern="[a-zA-Z0-9_]{3,32}" autocomplete="username"></label><div id="recovery-answers"></div><div id="recovery-error" class="error" role="alert"></div><button class="primary wide-action" id="recovery-next">下一步</button></form><button class="text-action" id="recovery-back">返回登录</button>');
+    let username=null;$('recovery-back').onclick=loginForm;
+    $('recovery-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{if(!username){const name=$('recovery-name').value.trim(),result=await api('/auth/recovery/questions','POST',{username:name},false);username=name;$('recovery-name').readOnly=true;$('recovery-answers').innerHTML=result.questions.map((q,i)=>'<label>'+esc(q)+'<input id="recovery-answer'+i+'" type="password" required minlength="3" maxlength="128" autocomplete="off"></label>').join('')+'<label>新密码<input id="recovery-password" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></label><label>确认新密码<input id="recovery-confirm" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></label>';$('recovery-next').textContent='重置密码';}else{if($('recovery-password').value!==$('recovery-confirm').value)throw Error('两次密码不一致');await api('/auth/recovery/reset','POST',{username,answer1:$('recovery-answer0').value,answer2:$('recovery-answer1').value,password:$('recovery-password').value},false);loginForm();notify('密码已重置，请使用新密码登录');}}catch(err){if($('recovery-error'))$('recovery-error').textContent=err.message;}finally{button.disabled=false;}};
+  }
+  let campaignBusy=false,campaignEntry=0,campaignActive=null;
+  async function checkCampaign(){
+    if(!cloud.user||cloud.needsLogin||window.authLocked||document.hidden||!$('modal').hidden||!$('ai-panel').hidden||campaignBusy||Date.now()-campaignEntry<3000)return;
+    campaignEntry=Date.now();campaignBusy=true;const generation=epoch;
+    try{const result=await api('/campaigns');if(generation!==epoch||window.authLocked||!$('modal').hidden||!$('ai-panel').hidden||document.hidden)return;const item=result.campaign;if(!item)return;const key=item.id+':'+result.period;if((cloud.campaignReceipts||[]).includes(key))return;if(!native||typeof Online.showCampaign!=='function')return;campaignActive={id:item.id,key,generation};Online.showCampaign(JSON.stringify(item));}catch(e){}finally{campaignBusy=false;}
+  }
+  window.campaignResult=(id,loaded)=>{const current=campaignActive;if(!current||current.id!==id||current.generation!==epoch)return;if(loaded){cloud.campaignReceipts=[...(cloud.campaignReceipts||[]),current.key].slice(-200);persist();api('/campaigns/'+id+'/displayed','POST',{}).catch(()=>{});}campaignActive=null;};
+  window.appEntered=()=>{if(!window.authLocked)checkCampaign();};
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)window.appEntered();});
+  lockAccount(!cloud.user||Boolean(cloud.needsLogin)||Boolean(cloud.securityRequired));
+  if(!cloud.user||cloud.needsLogin)loginForm();else if(cloud.securityRequired)securityForm(true);else if(!loadingError)setTimeout(()=>{sync();checkCampaign();},500);
 })();

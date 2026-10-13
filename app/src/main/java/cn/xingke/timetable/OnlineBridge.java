@@ -21,6 +21,7 @@ public final class OnlineBridge {
     private final MainActivity activity;
     private final WebView web;
     private final SharedPreferences prefs;
+    private final CampaignDialog campaigns;
     private final ExecutorService network=Executors.newFixedThreadPool(2);
     private final Semaphore requests=new Semaphore(4);
     private static final String ALIAS="xingke-v2-vault";
@@ -36,7 +37,7 @@ public final class OnlineBridge {
         javax.net.ssl.SSLContext tls=javax.net.ssl.SSLContext.getInstance("TLS");tls.init(null,trust.getTrustManagers(),null);
         return tls.getSocketFactory();
     }
-    OnlineBridge(MainActivity a,WebView w,SharedPreferences p){activity=a;web=w;prefs=p;}
+    OnlineBridge(MainActivity a,WebView w,SharedPreferences p){activity=a;web=w;prefs=p;campaigns=new CampaignDialog(a,w);}
     private SecretKey key() throws Exception {
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
         if(!store.containsAlias(ALIAS)){
@@ -144,5 +145,6 @@ public final class OnlineBridge {
         activity.runOnUiThread(()->{if(!activity.isDestroyed())web.evaluateJavascript("window.onlineResult&&window.onlineResult("+JSONObject.quote(id)+","+status+","+JSONObject.quote(body)+","+json+")",null);});
     }
     @JavascriptInterface public void pickPhoto(boolean camera){activity.runOnUiThread(()->activity.pickPhoto(camera));}
-    void destroy(){network.shutdownNow();}
+    @JavascriptInterface public void showCampaign(String raw){if(raw!=null&&raw.length()<10000)activity.runOnUiThread(()->campaigns.show(raw));}
+    void destroy(){campaigns.destroy();network.shutdownNow();}
 }

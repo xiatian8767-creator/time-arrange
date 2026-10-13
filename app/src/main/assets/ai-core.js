@@ -9,14 +9,19 @@
     let next=clone(base);const changes=[];
     for(const op of answer.operations){
       if(!op||typeof op.type!=='string')throw Error('AI 操作无效');
-      if(op.type==='schedule.replace'){
+      if(op.type==='schedule.replace'||op.type==='slots.replace'){
         if(!permissions.schedule)throw Error('未授权 AI 修改课表');
-        const schedule=C.scheduleOnly({version:2,slots:op.slots,courses:op.courses});
+        const payload=op.value||op;
+        if(!Array.isArray(payload.slots))throw Error('作息修改需要完整 slots 数组');
+        const courses=op.type==='slots.replace'?next.courses:payload.courses;
+        if(!Array.isArray(courses))throw Error('整表替换需要完整 courses 数组；仅修改作息请用 slots.replace');
+        const normalized=courses.map(c=>({...{color:'#6b9cf4',room:'',note:''},...c,id:c.id||newId(courses)}));
+        const schedule=C.scheduleOnly({version:2,slots:payload.slots,courses:normalized});
         changes.push({type:'替换课表和作息',before:{slots:next.slots,courses:next.courses},after:schedule});
         next={...next,...schedule};continue;
       }
       const match=/^(course|todo)\.(create|update|delete)$/.exec(op.type);
-      if(!match)throw Error('AI 请求了不允许的操作');
+      if(!match)throw Error('不支持 '+op.type+'；允许 schedule.replace、slots.replace、course.create/update/delete、todo.create/update/delete');
       const [,kind,action]=match,key=kind==='course'?'courses':'todos';
       if(!permissions[kind==='course'?'schedule':'todos'])throw Error('请先勾选“'+(kind==='course'?'我的课表和作息':'我的待办')+'”，再重新发送；本次未修改数据');
       const items=next[key],id=action==='create'?newId(items):op.id,index=items.findIndex(x=>x.id===id);

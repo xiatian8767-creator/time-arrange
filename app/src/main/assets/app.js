@@ -17,7 +17,7 @@ function save(next){
 }
 function notify(msg){$('toast').textContent=msg;$('toast').hidden=false;clearTimeout(timer);timer=setTimeout(()=>$('toast').hidden=true,3000);}
 window.nativeNotice=notify;
-function closeModal(){if($('modal').hidden)return false;$('modal').hidden=true;document.body.style.overflow='';if(returnFocus&&returnFocus.isConnected)returnFocus.focus();return true;}
+function closeModal(){if(window.authLocked||$('modal').hidden)return false;$('modal').hidden=true;document.body.style.overflow='';if(returnFocus&&returnFocus.isConnected)returnFocus.focus();return true;}
 function showPage(name){activePage=['todos','settings'].includes(name)?name:'schedule';$('schedule-page').hidden=activePage!=='schedule';$('todo-page').hidden=activePage!=='todos';$('settings-page').hidden=activePage!=='settings';['schedule','todos','settings'].forEach(page=>{const button=$(page==='settings'?'settings':'nav-'+page);button.classList.toggle('selected',page===activePage);if(page===activePage)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});if(activePage==='todos')renderTodos();else if(activePage==='schedule')tick();window.scrollTo(0,0);}
 window.showPage=showPage;
 window.handleBack=()=>{if(closeModal())return true;if(activePage!=='schedule'){showPage('schedule');return true;}return false;};
@@ -98,7 +98,7 @@ function renderTodos(){
 }
 $('notification-settings').onclick=()=>Android.openNotificationSettings();
 $('exact-settings').onclick=()=>Android.requestExactReminders();
-$('todo-list').onclick=e=>{const toggle=e.target.closest('[data-toggle]'),edit=e.target.closest('[data-edit]');if(toggle){const todo=state.todos.find(t=>t.id===toggle.dataset.toggle);if(todo){save({...state,todos:state.todos.map(t=>t.id===todo.id?{...t,completed:!t.completed}:t)});notify(todo.completed?'已恢复为待完成':'已完成');}return;}if(edit)editTodo(edit.dataset.edit);};
+$('todo-list').onclick=e=>{const toggle=e.target.closest('[data-toggle]'),edit=e.target.closest('[data-edit]');if(toggle){const todo=state.todos.find(t=>t.id===toggle.dataset.toggle);if(todo){const origin=toggle.closest('.todo-card').getBoundingClientRect();save({...state,todos:state.todos.map(t=>t.id===todo.id?{...t,completed:!t.completed}:t)});if(!todo.completed&&window.celebrateTodo)window.celebrateTodo(origin);notify(todo.completed?'已恢复为待完成':'已完成');}return;}if(edit)editTodo(edit.dataset.edit);};
 $('todo-filters').onclick=e=>{const button=e.target.closest('[data-filter]');if(!button)return;todoFilter=button.dataset.filter;document.querySelectorAll('.todo-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderTodos();};
 $('add-todo').onclick=()=>editTodo();
 function inputDateTime(ms){const d=new Date(ms),pad=n=>String(n).padStart(2,'0');return {date:d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()),time:pad(d.getHours())+':'+pad(d.getMinutes())};}
