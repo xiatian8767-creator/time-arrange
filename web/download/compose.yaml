@@ -2,7 +2,7 @@ services:
   web:
     build:
       context: .
-    image: xingke-download:3.2beta.5
+    image: xingke-download:3.2beta.6
     container_name: xingke-download
     restart: unless-stopped
     ports:

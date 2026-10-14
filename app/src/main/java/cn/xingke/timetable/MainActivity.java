@@ -148,7 +148,7 @@ public class MainActivity extends Activity {
                 intent=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 intent.setClipData(android.content.ClipData.newRawUri("课表照片",uri));
-            }else{intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");}
+            }else{intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);}
             startActivityForResult(intent,camera?105:104);
         }catch(Exception e){notice("无法打开相机或照片选择器");}
     }
@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
         if(request==106){if(result==RESULT_OK&&data!=null&&data.getData()!=null)readPhoto(data.getData(),true);return;}
         if(request==104||request==105){
             Uri cameraUri=Uri.parse("content://"+getPackageName()+".photo/capture.jpg");
-            if(result==RESULT_OK){if(request==105)readPhoto(cameraUri);else if(data!=null&&data.getData()!=null)readPhoto(data.getData());}
+            if(result==RESULT_OK){if(request==105)readPhoto(cameraUri);else if(data!=null&&data.getClipData()!=null){android.content.ClipData clips=data.getClipData();if(clips.getItemCount()>10)notice("最多上传十张照片");for(int i=0;i<Math.min(10,clips.getItemCount());i++)readPhoto(clips.getItemAt(i).getUri());}else if(data!=null&&data.getData()!=null)readPhoto(data.getData());}
             if(request==105){revokeUriPermission(cameraUri,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);new java.io.File(getCacheDir(),"capture.jpg").delete();}
             return;
         }

@@ -89,7 +89,7 @@ public final class OnlineBridge {
     }
     @JavascriptInterface public void request(String id,String raw){
         if(id==null||!id.matches("[a-zA-Z0-9_-]{1,80}"))return;
-        if(raw==null||raw.length()>6*1024*1024||!requests.tryAcquire()){reply(id,0,"请求过多或内容过大",false);return;}
+        if(raw==null||raw.length()>30*1024*1024||!requests.tryAcquire()){reply(id,0,"请求过多或内容过大",false);return;}
         network.execute(()->{
             HttpsURLConnection connection=null;
             try{

@@ -2,8 +2,8 @@
   'use strict';
   window.celebrateTodo=rect=>{
     if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-    const colors=['#c4a56b','#7b9fd3','#e8b5bf','#9abca9','#e7cd83'];
-    for(let i=0;i<34;i++){
+    const colors=['#ff3366','#ffb800','#00c985','#267aff','#a646ff','#ff6b19'];
+    for(let i=0;i<52;i++){
       const bit=document.createElement('i');bit.className='todo-confetti';bit.setAttribute('aria-hidden','true');
       bit.style.background=colors[i%colors.length];bit.style.left=(rect.left+rect.width*(.12+Math.random()*.76))+'px';bit.style.top=(rect.top+Math.min(rect.height/2,35))+'px';document.body.append(bit);
       const x=(Math.random()-.5)*150,y=50+Math.random()*90,rotation=(Math.random()-.5)*700;

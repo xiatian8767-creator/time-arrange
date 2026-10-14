@@ -35,7 +35,7 @@
     if(native){if(!Online.activate(target,raw,JSON.stringify(nextCloud)))throw Error('账号切换保存失败');}
     else{localStorage.setItem('star-document-'+scope,rawState());localStorage.setItem('star-partner-'+scope,localStorage.getItem('star-partner')||'');localStorage.setItem('star-v2-scope',target);localStorage.setItem('star-schedule',raw);localStorage.setItem('star-partner',localStorage.getItem('star-partner-'+target)||'');write('cloud',nextCloud);}
     epoch++;cloud=nextCloud;scope=target;state=clean;partner=localPartner();onlineMate=false;partnerInfo=null;viewPartner=false;render();
-    history=[];photo=null;$('ai-messages').replaceChildren();$('ai-photo-preview').hidden=true;$('ai-photo').removeAttribute('src');
+    history=[];photo=[];$('ai-messages').replaceChildren();$('ai-photo-preview').hidden=true;$('ai-photo').removeAttribute('src');
   }
   function setDocument(document){applying=true;try{save(document);}finally{applying=false;}}
   function summary(doc){return doc?doc.courses.length+' 门课程 / '+doc.slots.length+' 个时间段 / '+doc.todos.length+' 项待办':'云端尚无数据';}
@@ -129,7 +129,7 @@
   };
 
   // AI conversation stays in memory. Keys never enter export, cloud sync or JS requests.
-  let history=[],photo=null,aiBusy=false;
+  let history=[],photo=[],aiBusy=false;
   const defaults={deepseek:{baseUrl:'https://api.deepseek.com',model:'deepseek-flash'},qwen:{baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen3-vl-plus'}};
   function aiSettings(){
     const config=native?read('ai'):memoryAI,provider=config.provider||'deepseek';
@@ -144,9 +144,10 @@
   $('ai-close').onclick=closeAI;$('ai-config').onclick=aiSettings;
   const oldBack=window.handleBack;window.handleBack=()=>{if(!$('modal').hidden)return oldBack();if(!$('ai-panel').hidden){closeAI();return true;}return oldBack();};
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('modal').hidden&&!$('ai-panel').hidden)closeAI();});
-  window.receiveAIPhoto=data=>{photo=data;$('ai-photo').src=data;$('ai-photo-preview').hidden=false;};
+  function renderPhotos(){const preview=$('ai-photo-preview');preview.hidden=!photo.length;$('ai-photo').hidden=true;let list=$('ai-photo-list');if(!list){list=document.createElement('div');list.id='ai-photo-list';preview.prepend(list);}list.replaceChildren();photo.forEach((data,index)=>{const item=document.createElement('div'),img=document.createElement('img'),remove=document.createElement('button');img.src=data;img.alt='待发送照片 '+(index+1);remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','移除第 '+(index+1)+' 张照片');remove.onclick=()=>{photo.splice(index,1);renderPhotos();};item.append(img,remove);list.append(item);});$('ai-photo-remove').textContent='清空 '+photo.length+'/10';}
+  window.receiveAIPhoto=data=>{if(photo.length>=10)return notify('最多上传十张照片');photo.push(data);renderPhotos();};
   $('ai-upload').onclick=()=>native?Online.pickPhoto(false):notify('请在安卓应用中选择照片');$('ai-camera').onclick=()=>native?Online.pickPhoto(true):notify('请在安卓应用中拍照');
-  $('ai-photo-remove').onclick=()=>{photo=null;$('ai-photo').removeAttribute('src');$('ai-photo-preview').hidden=true;};
+  $('ai-photo-remove').onclick=()=>{photo=[];renderPhotos();};
   $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');history=[];$('ai-messages').replaceChildren();$('ai-photo-remove').click();$('ai-welcome').hidden=false;};
   function readable(value,slots){
     if(!value)return '无';
@@ -162,12 +163,12 @@
   $('ai-form').onsubmit=async e=>{
     e.preventDefault();if(aiBusy)return;
     const config=native?read('ai'):memoryAI;if(!config.key){aiSettings();return;}
-    const prompt=$('ai-input').value.trim(),sentPhoto=photo;if(!prompt&&!sentPhoto)return;
+    const prompt=$('ai-input').value.trim(),sentPhotos=photo.slice();if(!prompt&&!sentPhotos.length)return;
     const base=rawState(),generation=epoch,permissions={schedule:true,todos:true};
     const context={version:2,now:Date.now(),localTime:new Date().toString()};if(permissions.schedule){context.slots=state.slots;context.courses=state.courses;}if(permissions.todos)context.todos=state.todos;
     const system='你是Star Orbit助手。仅输出 JSON 对象：{"message":"中文回答","warnings":["不确定信息"],"operations":[]}。聊天时 operations 为空。所有操作都是等待用户确认的建议，不要宣称已执行。只使用用户授权提供的数据。不确定的图片文字不得编造。支持 type: course.create/course.update/course.delete/todo.create/todo.update/todo.delete（字段 id，value 不含 id）；新记录生成唯一字符串 id，update 只列变化字段。course value 包含 day(1-7),start/end(时间段id),name,color(#rrggbb),room,note；todo value 包含 title,dueAt(毫秒),createdAt(毫秒),priority(low/normal/high),note,completed,remind,alarmEnabled(布尔，默认false),alarmAt(毫秒，默认0)。只有用户明确要求闹钟才开启alarmEnabled，并提供alarmAt；普通提醒只设remind。更换作息或整张课表只允许 schedule.replace，带完整 slots 和 courses 数组（课程含 id），保留待办。slots 包含 id,start/end(HH:mm)，活动段可含 kind:activity,label。时间不重叠，课程不冲突。课程与待办字段长度限制分别遵循名称30/标题80/地点60/备注500。当前授权上下文 JSON：'+JSON.stringify(context);
-    const content=sentPhoto?[{type:'text',text:prompt||'请查看图片，识别其中的安排；不确定的内容先询问，所有修改先给出建议。'},{type:'image_url',image_url:{url:sentPhoto}}]:prompt;
-    const sent=message(prompt,'user');if(sentPhoto){const img=document.createElement('img');img.src=sentPhoto;img.alt='本条消息的图片';img.className='ai-sent-photo';sent.append(img);}photo=null;$('ai-photo-preview').hidden=true;$('ai-photo').removeAttribute('src');$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
+    const content=sentPhotos.length?[{type:'text',text:prompt||'请查看这些图片，综合识别其中的安排，合并重复信息；不确定的内容先询问，所有修改先给出建议。'},...sentPhotos.map(url=>({type:'image_url',image_url:{url}}))]:prompt;
+    const sent=message(prompt,'user');if(sentPhotos.length){const gallery=document.createElement('div');gallery.className='ai-sent-gallery';sentPhotos.forEach((data,i)=>{const img=document.createElement('img');img.src=data;img.alt='本条消息的图片 '+(i+1);img.className='ai-sent-photo';gallery.append(img);});sent.append(gallery);}photo=[];renderPhotos();$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
     try{
       // Conversation contains only user prompts / answers, not prior private contexts or images.
       const contract='补充协议：权限为 '+JSON.stringify(permissions)+'。未授权的类型不得生成操作，请在 message 中提示勾选对应权限。create 不需要 id，由客户端生成；update/delete 的 id 必须来自上下文已有记录。待办 dueAt 优先使用带时区的 ISO 8601 日期时间，例如 2026-10-04T09:00:00+08:00，禁止秒时间戳。用户未指定具体时刻时先询问，不生成待办。缺省 priority=normal、completed=false、remind=false、note=""，只有明确要求提醒才设置 remind=true。操作示例：{"message":"请预览确认","warnings":[],"operations":[{"type":"todo.create","value":{"title":"喝一杯牛奶","dueAt":"2026-10-04T09:00:00+08:00"}}]}。示例时间仅展示格式，实际日期根据当前时间和用户要求计算。';

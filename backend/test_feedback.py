@@ -58,3 +58,28 @@ def test_feedback_validation_and_limits(client):
     assert client.get('/admin/api/feedback?offset=-1').status_code==422
     id=client.get('/admin/api/feedback').json()['feedback'][0]['id']
     assert client.post('/admin/api/feedback/'+id,json={'status':'unknown','revision':1},headers=csrf).status_code==422
+
+def test_delete_feedback_and_images(client):
+    id=client.post('/feedback/api',json=payload()).json()['feedbackId']
+    path='/admin/api/feedback/'+id
+    assert client.post(path+'/delete',json={'revision':1}).status_code==401
+    csrf=login(client)
+    assert client.post(path+'/delete',json={'revision':1}).status_code==403
+    assert client.post(path+'/delete',json={'revision':2},headers=csrf).status_code==409
+    assert client.post(path+'/delete',json={'revision':1},headers=csrf).status_code==200
+    assert client.get(path).status_code==404
+    assert client.get(path+'/images/0').status_code==404
+    assert client.get('/admin/api/feedback').json()['counts']['pending']==0
+
+def test_campaign_image_upload_and_display(client):
+    image=payload()['images'][0]
+    assert client.post('/admin/api/campaign-images',json={'image':image}).status_code==401
+    csrf=login(client)
+    assert client.post('/admin/api/campaign-images',json={'image':image}).status_code==403
+    assert client.post('/admin/api/campaign-images',json={'image':'data:image/jpeg;base64,xxx'},headers=csrf).status_code==422
+    result=client.post('/admin/api/campaign-images',json={'image':image},headers=csrf)
+    assert result.status_code==200,result.text
+    path=result.json()['path']
+    assert client.get(path).status_code==200
+    assert client.get(path+'asset').headers['content-type']=='image/jpeg'
+    assert Image.open(io.BytesIO(client.get(path+'asset').content)).size==(64,48)

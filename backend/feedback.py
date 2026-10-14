@@ -51,6 +51,20 @@ class Decision(BaseModel):
     note: str = Field(default='', max_length=2000)
     revision: int = Field(ge=1)
 
+class Removal(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    revision: int = Field(ge=1)
+
+@admin_router.post('/{feedback_id}/delete')
+def remove(feedback_id: str, data: Removal, auth=Depends(authorized), session: Session=Depends(m.db)):
+    row=session.scalar(select(Feedback).where(Feedback.id==feedback_id).with_for_update())
+    if not row: raise HTTPException(404,'反馈不存在')
+    if row.revision!=data.revision: raise HTTPException(409,'反馈已更新，请重新打开后删除')
+    session.delete(row)
+    session.add(Audit(id=secrets.token_hex(16),admin=auth.username,user_id=feedback_id,action='feedback_delete',created_at=int(time.time())))
+    session.commit()
+    return {'ok':True}
+
 def normalized_image(value):
     try:
         if not value.startswith('data:image/jpeg;base64,') or len(value)>250000:
