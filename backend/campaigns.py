@@ -90,6 +90,15 @@ class Receipt(m.Base):
     period = Column(String(30), primary_key=True)
     displayed_at = Column(BigInteger, nullable=False)
 
+class CampaignReset(m.Base):
+    __tablename__ = 'campaign_resets'
+    campaign_id = Column(String(32), ForeignKey('app_campaigns.id'), primary_key=True)
+    generation = Column(Integer, nullable=False, default=0)
+
+def delivery_key(session,row,now):
+    reset=session.get(CampaignReset,row.id)
+    return period(row,now)+(':'+str(reset.generation) if reset else '')
+
 class Config(Strict):
     title: str = Field(min_length=1, max_length=80)
     url: str = Field(max_length=2000)
@@ -98,7 +107,7 @@ class Config(Strict):
     audience: str = Field(pattern='^(all|custom)$')
     userIds: list[str] = Field(default_factory=list, max_length=2000)
     startsAt: int = Field(ge=0, le=4102444800000)
-    frequency: str = Field(pattern='^(once|daily|weekly)$')
+    frequency: str = Field(pattern='^(once|daily|weekly|always)$')
     enabled: bool = True
     revision: int = Field(default=0, ge=0)
 
@@ -129,7 +138,7 @@ def info(row):
 def period(row, now):
     date = datetime.fromtimestamp(now / 1000, CHINA)
     if row.frequency == 'once': return 'once'
-    if row.frequency == 'daily': return 'd:' + date.strftime('%Y-%m-%d')
+    if row.frequency in ('daily','always'): return 'd:' + date.strftime('%Y-%m-%d')
     iso = date.isocalendar()
     return f'w:{iso.year}-{iso.week:02}'
 
@@ -166,12 +175,25 @@ def save(data: Config, campaign_id: str='', auth=Depends(authorized), session: S
 class DeleteCampaign(Strict):
     revision: int = Field(ge=1)
 
+@router.post('/admin/api/campaigns/{campaign_id}/reset')
+def reset_campaign(campaign_id:str,data:DeleteCampaign,auth=Depends(authorized),session:Session=Depends(m.db)):
+    row=session.scalar(select(Campaign).where(Campaign.id==campaign_id).with_for_update())
+    if not row:raise HTTPException(404,'弹窗不存在')
+    if row.revision!=data.revision:raise HTTPException(409,'配置已更新，请刷新')
+    reset=session.get(CampaignReset,campaign_id)
+    if not reset:reset=CampaignReset(campaign_id=campaign_id,generation=0);session.add(reset)
+    reset.generation+=1;row.revision+=1
+    session.execute(delete(Receipt).where(Receipt.campaign_id==campaign_id))
+    session.add(Audit(id=secrets.token_hex(16),admin=auth.username,user_id='',action='campaign_reset',created_at=int(time.time())))
+    session.commit();return info(row)
+
 @router.post('/admin/api/campaigns/{campaign_id}/delete')
 def remove(campaign_id: str, data: DeleteCampaign, auth=Depends(authorized), session: Session=Depends(m.db)):
     row = session.scalar(select(Campaign).where(Campaign.id == campaign_id).with_for_update())
     if not row: raise HTTPException(404, '弹窗不存在')
     if row.revision != data.revision: raise HTTPException(409, '配置已更新，请刷新后再删除')
     session.execute(delete(Receipt).where(Receipt.campaign_id == campaign_id))
+    session.execute(delete(CampaignReset).where(CampaignReset.campaign_id == campaign_id))
     session.delete(row)
     session.add(Audit(id=secrets.token_hex(16), admin=auth.username, user_id='', action='campaign_delete', created_at=int(time.time())))
     session.commit()
@@ -182,17 +204,22 @@ def pending(skip: str=Query(default='', max_length=6600), token=Depends(m.authen
     now = int(time.time()*1000)
     skipped=set(skip.split(','))
     for row in session.scalars(select(Campaign).where(Campaign.enabled == True, Campaign.starts_at <= now).order_by(Campaign.starts_at.desc(), Campaign.id)).all():
-        key = period(row, now)
-        if row.id not in skipped and eligible(row, token.user_id, now) and not session.get(Receipt, (row.id, token.user_id, key)):
-            return {'campaign': {k:v for k,v in info(row).items() if k not in ('userIds', 'audience')}, 'period': key}
+        key = delivery_key(session,row,now)
+        if row.id not in skipped and eligible(row, token.user_id, now) and (row.frequency=='always' or not session.get(Receipt, (row.id, token.user_id, key))):
+            return {'campaign': {k:v for k,v in info(row).items() if k not in ('userIds', 'audience')}, 'period': key+(':'+secrets.token_hex(4) if row.frequency=='always' else '')}
     return {'campaign': None}
 
+class DisplayReceipt(Strict):
+    period: str = Field(default='',max_length=80)
+
 @router.post('/api/v1/campaigns/{campaign_id}/displayed')
-def displayed(campaign_id: str, token=Depends(m.authenticated), session: Session=Depends(m.db)):
+def displayed(campaign_id: str, data: DisplayReceipt | None = None, token=Depends(m.authenticated), session: Session=Depends(m.db)):
     now = int(time.time()*1000)
-    row = session.get(Campaign, campaign_id)
+    row = session.scalar(select(Campaign).where(Campaign.id==campaign_id).with_for_update())
     if not row or not eligible(row, token.user_id, now): raise HTTPException(404, '弹窗已停止或不适用于当前账号')
-    key = period(row, now)
+    key = delivery_key(session,row,now)
+    if data and data.period and data.period!=key and not (row.frequency=='always' and data.period.startswith(key+':')):
+        return {'ok':True,'stale':True}
     session.add(Receipt(campaign_id=row.id, user_id=token.user_id, period=key, displayed_at=now))
     try: session.commit()
     except IntegrityError: session.rollback()

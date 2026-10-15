@@ -145,6 +145,7 @@ public final class OnlineBridge {
         activity.runOnUiThread(()->{if(!activity.isDestroyed())web.evaluateJavascript("window.onlineResult&&window.onlineResult("+JSONObject.quote(id)+","+status+","+JSONObject.quote(body)+","+json+")",null);});
     }
     @JavascriptInterface public void pickPhoto(boolean camera){activity.runOnUiThread(()->activity.pickPhoto(camera));}
+    @JavascriptInterface public void pickStarPhoto(){activity.runOnUiThread(()->activity.pickStarPhoto());}
     @JavascriptInterface public void showCampaign(String raw){if(raw!=null&&raw.length()<10000)activity.runOnUiThread(()->campaigns.show(raw));}
     void destroy(){campaigns.destroy();network.shutdownNow();}
 }

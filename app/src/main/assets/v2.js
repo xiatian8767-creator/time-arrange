@@ -28,6 +28,7 @@
     }
   }
   function cached(target){if(target===scope)return rawState();return native?Online.accountData(target):(localStorage.getItem('star-document-'+target)||'');}
+  window.starAccount={user:()=>cloud.user||null,generation:()=>epoch,request:async(path,method='GET',body)=>{const gen=epoch;if(!cloud.user||cloud.needsLogin)throw Error('请先登录');const result=await api(path,method,body);if(gen!==epoch)throw Error('账号已切换');return result;}};
   function localPartner(){try{const raw=window.Android?Android.loadPartner():localStorage.getItem('star-partner');return raw?C.scheduleOnly(JSON.parse(raw)):null;}catch(e){return null;}}
   function clearOnlineMate(){if(onlineMate){partner=localPartner();onlineMate=false;viewPartner=false;renderSchedule();}partnerInfo=null;}
   function activate(nextCloud,document,target){
@@ -71,7 +72,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 2.1beta · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 3.3beta.1 · 探索版';
 
   };
   function accountSettings(){
@@ -219,9 +220,9 @@
     if(campaignActive&&campaignActive.generation!==epoch)campaignActive=null;
     if(!cloud.user||cloud.needsLogin||window.authLocked||document.hidden||!$('modal').hidden||!$('ai-panel').hidden||campaignBusy||campaignActive||skipped.length>=200||(!continuing&&Date.now()-campaignEntry<3000))return;
     campaignEntry=Date.now();campaignBusy=true;const generation=epoch;
-    try{const result=await api('/campaigns'+(skipped.length?'?skip='+skipped.join(','):''));if(generation!==epoch||window.authLocked||!$('modal').hidden||!$('ai-panel').hidden||document.hidden)return;const item=result.campaign;if(!item||skipped.includes(item.id))return;const key=item.id+':'+result.period;if((cloud.campaignReceipts||[]).includes(key)){setTimeout(()=>{if(generation===epoch)checkCampaign(true,[...skipped,item.id]);},0);return;}if(!native||typeof Online.showCampaign!=='function')return;campaignActive={id:item.id,key,generation,skipped,ack:Promise.resolve()};Online.showCampaign(JSON.stringify(item));}catch(e){}finally{campaignBusy=false;}
+    try{const result=await api('/campaigns'+(skipped.length?'?skip='+skipped.join(','):''));if(generation!==epoch||window.authLocked||!$('modal').hidden||!$('ai-panel').hidden||document.hidden)return;const item=result.campaign;if(!item||skipped.includes(item.id))return;const key=item.id+':'+result.period;if((cloud.campaignReceipts||[]).includes(key)){setTimeout(()=>{if(generation===epoch)checkCampaign(true,[...skipped,item.id]);},0);return;}if(!native||typeof Online.showCampaign!=='function')return;campaignActive={id:item.id,key,period:result.period,generation,skipped,ack:Promise.resolve()};Online.showCampaign(JSON.stringify(item));}catch(e){}finally{campaignBusy=false;}
   }
-  window.campaignResult=(id,loaded)=>{const current=campaignActive;if(!current||current.id!==id||current.generation!==epoch)return;if(loaded){cloud.campaignReceipts=[...(cloud.campaignReceipts||[]),current.key].slice(-200);persist();current.ack=api('/campaigns/'+id+'/displayed','POST',{}).catch(()=>{});}};
+  window.campaignResult=(id,loaded)=>{const current=campaignActive;if(!current||current.id!==id||current.generation!==epoch)return;if(loaded){cloud.campaignReceipts=[...(cloud.campaignReceipts||[]),current.key].slice(-200);persist();current.ack=api('/campaigns/'+id+'/displayed','POST',{period:current.period}).catch(()=>{});}};
   window.campaignClosed=async id=>{const current=campaignActive;if(!current||current.id!==id)return;await current.ack;if(campaignActive!==current)return;campaignActive=null;setTimeout(()=>{if(current.generation===epoch)checkCampaign(true,[...current.skipped,id]);},250);};
   window.appEntered=()=>{if(!window.authLocked)checkCampaign();};
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)window.appEntered();});

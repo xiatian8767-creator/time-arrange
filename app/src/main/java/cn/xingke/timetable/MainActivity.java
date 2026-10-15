@@ -152,8 +152,15 @@ public class MainActivity extends Activity {
             startActivityForResult(intent,camera?105:104);
         }catch(Exception e){notice("无法打开相机或照片选择器");}
     }
+    public void pickStarPhoto(){
+        try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),107);}
+        catch(Exception e){notice("无法打开照片选择器");}
+    }
     private void readPhoto(Uri uri){readPhoto(uri,false);}
     private void readPhoto(Uri uri,boolean background){
+        readPhoto(uri,background?"receiveBackgroundPhoto":"receiveAIPhoto",false);
+    }
+    private void readPhoto(Uri uri,String callback,boolean compact){
         try{
             android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;
             try(InputStream in=getContentResolver().openInputStream(uri)){android.graphics.BitmapFactory.decodeStream(in,null,options);}
@@ -163,10 +170,12 @@ public class MainActivity extends Activity {
             android.graphics.Bitmap bitmap;
             try(InputStream in=getContentResolver().openInputStream(uri)){bitmap=android.graphics.BitmapFactory.decodeStream(in,null,options);}
             if(bitmap==null)throw new Exception();
-            ByteArrayOutputStream out=new ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,out);bitmap.recycle();
+            if(compact&&Math.max(bitmap.getWidth(),bitmap.getHeight())>1000){float scale=1000f/Math.max(bitmap.getWidth(),bitmap.getHeight());android.graphics.Bitmap scaled=android.graphics.Bitmap.createScaledBitmap(bitmap,Math.max(1,(int)(bitmap.getWidth()*scale)),Math.max(1,(int)(bitmap.getHeight()*scale)),true);if(scaled!=bitmap)bitmap.recycle();bitmap=scaled;}
+            ByteArrayOutputStream out=new ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,out);
+            if(compact){for(int quality=75;out.size()>175*1024&&quality>=25;quality-=10){out.reset();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,quality,out);}}
+            bitmap.recycle();if(compact&&out.size()>180*1024)throw new Exception();
             if(out.size()>2*1024*1024)throw new Exception();
             String image="data:image/jpeg;base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
-            String callback=background?"receiveBackgroundPhoto":"receiveAIPhoto";
             web.evaluateJavascript("window."+callback+"&&window."+callback+"("+JSONObject.quote(image)+")",null);
         }catch(Exception e){notice("无法读取图片，请选择清晰、较小的课表照片");}
     }
@@ -174,6 +183,7 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(request==203||request==204){advancePermissions();return;}
+        if(request==107){if(result==RESULT_OK&&data!=null&&data.getData()!=null)readPhoto(data.getData(),"receiveStarPhoto",true);return;}
         if(request==106){if(result==RESULT_OK&&data!=null&&data.getData()!=null)readPhoto(data.getData(),true);return;}
         if(request==104||request==105){
             Uri cameraUri=Uri.parse("content://"+getPackageName()+".photo/capture.jpg");

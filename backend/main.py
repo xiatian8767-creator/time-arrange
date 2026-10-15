@@ -318,3 +318,5 @@ from .security import router as security_router
 from .campaigns import router as campaigns_router
 app.include_router(security_router)
 app.include_router(campaigns_router)
+from .stars import router as stars_router
+app.include_router(stars_router)
