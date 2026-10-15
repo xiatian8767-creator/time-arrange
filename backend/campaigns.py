@@ -151,7 +151,24 @@ def script():
 
 @router.get('/admin/api/campaigns')
 def listing(auth=Depends(authorized), session: Session=Depends(m.db)):
-    return {'campaigns': [info(r) for r in session.scalars(select(Campaign).order_by(Campaign.created_at.desc())).all()]}
+    from .stars import StarMessage
+    # Existing deliveries also share the campaigns table. Match their source,
+    # not the editable title, and leave the user delivery queue unchanged.
+    peer_message = select(StarMessage.id).where(
+        ~StarMessage.sender.startswith('admin:'),
+        Campaign.url.endswith('/updates/messages/' + StarMessage.id + '/'),
+    ).exists()
+    return {'campaigns': [info(r) for r in session.scalars(select(Campaign).where(~peer_message).order_by(Campaign.created_at.desc())).all()]}
+
+def require_admin_campaign(session, row):
+    if row is None:
+        raise HTTPException(404, '弹窗不存在')
+    from .stars import StarMessage
+    parts = urlsplit(row.url).path.rstrip('/').split('/')
+    if len(parts) == 4 and parts[1:3] == ['updates', 'messages']:
+        message = session.get(StarMessage, parts[3])
+        if message and not message.sender.startswith('admin:'):
+            raise HTTPException(404, '弹窗不存在')
 
 @router.post('/admin/api/campaigns')
 @router.post('/admin/api/campaigns/{campaign_id}')
@@ -160,7 +177,7 @@ def save(data: Config, campaign_id: str='', auth=Depends(authorized), session: S
         found = set(session.scalars(select(m.User.id).where(m.User.id.in_(data.userIds))).all())
         if len(found) != len(data.userIds): raise HTTPException(422, '部分用户 ID 不存在，请核对')
     row = session.scalar(select(Campaign).where(Campaign.id == campaign_id).with_for_update()) if campaign_id else None
-    if campaign_id and not row: raise HTTPException(404, '弹窗不存在')
+    if campaign_id: require_admin_campaign(session, row)
     if row and row.revision != data.revision: raise HTTPException(409, '配置已更新，请刷新后再编辑')
     if row is None:
         row = Campaign(id=secrets.token_hex(16), created_at=int(time.time()*1000), revision=0)
@@ -178,7 +195,7 @@ class DeleteCampaign(Strict):
 @router.post('/admin/api/campaigns/{campaign_id}/reset')
 def reset_campaign(campaign_id:str,data:DeleteCampaign,auth=Depends(authorized),session:Session=Depends(m.db)):
     row=session.scalar(select(Campaign).where(Campaign.id==campaign_id).with_for_update())
-    if not row:raise HTTPException(404,'弹窗不存在')
+    require_admin_campaign(session, row)
     if row.revision!=data.revision:raise HTTPException(409,'配置已更新，请刷新')
     reset=session.get(CampaignReset,campaign_id)
     if not reset:reset=CampaignReset(campaign_id=campaign_id,generation=0);session.add(reset)
@@ -190,7 +207,7 @@ def reset_campaign(campaign_id:str,data:DeleteCampaign,auth=Depends(authorized),
 @router.post('/admin/api/campaigns/{campaign_id}/delete')
 def remove(campaign_id: str, data: DeleteCampaign, auth=Depends(authorized), session: Session=Depends(m.db)):
     row = session.scalar(select(Campaign).where(Campaign.id == campaign_id).with_for_update())
-    if not row: raise HTTPException(404, '弹窗不存在')
+    require_admin_campaign(session, row)
     if row.revision != data.revision: raise HTTPException(409, '配置已更新，请刷新后再删除')
     session.execute(delete(Receipt).where(Receipt.campaign_id == campaign_id))
     session.execute(delete(CampaignReset).where(CampaignReset.campaign_id == campaign_id))

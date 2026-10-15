@@ -23,6 +23,7 @@ final class CampaignDialog {
         try{Uri u=Uri.parse(raw);String h=u.getHost();return ("https".equals(u.getScheme())||"http".equals(u.getScheme()))&&h!=null&&h.contains(".")&&!h.equals("appassets.androidplatform.net")&&!h.equals("localhost")&&!h.endsWith(".local")&&!h.endsWith(".internal")&&!h.matches("^(127|10|0)\\..*")&&!h.startsWith("192.168.")&&!h.startsWith("169.254.")&&!h.matches("^172\\.(1[6-9]|2[0-9]|3[01])\\..*")&&u.getUserInfo()==null&&(u.getPort()==-1||u.getPort()==80||u.getPort()==8080||u.getPort()==443||u.getPort()==8443);}catch(Exception e){return false;}
     }
     private boolean navigate(String raw){
+        if("starorbit://campaign/close".equals(raw)){if(dialog!=null)dialog.dismiss();return true;}
         if("starorbit://settings/security".equals(raw)){
             if(dialog!=null)dialog.dismiss();
             host.post(()->host.evaluateJavascript("window.openSecuritySettings&&window.openSecuritySettings()",null));

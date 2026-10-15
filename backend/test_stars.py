@@ -102,6 +102,26 @@ def test_profile_detail_backup_and_scheduled_message(client):
     assert c.get('/api/v1/campaigns',headers=ah).json()['campaign'] is None
     post(c,'/api/v1/stars/profile',{'avatar':None},ah);assert c.get('/api/v1/stars',headers=ah).json()['user']['avatar'] is None
 
+def test_admin_campaign_list_excludes_peer_messages_without_affecting_delivery(client):
+    c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');csrf=admin(c);bind(a,b)
+    grant(c,a,csrf,n=10,message={'text':'管理员赠送'})
+    post(c,'/api/v1/stars/send',{'requestId':key(),'partnerId':b,'message':{'text':'一起上课'}},ah)
+    post(c,'/api/v1/stars/gift',{'requestId':key(),'partnerId':b,'amount':1},ah)
+    body={'title':'运营活动','url':'https://example.com/','width':88,'height':65,'audience':'all','startsAt':0,'frequency':'once','enabled':True}
+    official=post(c,'/admin/api/campaigns',body,csrf)
+    listed=c.get('/admin/api/campaigns').json()['campaigns']
+    assert len(listed)==2
+    assert {r['title'] for r in listed}=={'运营活动','星币到账'}
+    received=c.get('/api/v1/campaigns',headers=bh).json()['campaign']
+    assert received and received['id'] not in {r['id'] for r in listed}
+    for action in ['reset','delete']:
+        assert c.post('/admin/api/campaigns/'+received['id']+'/'+action,json={'revision':received['revision']},headers=csrf).status_code==404
+    assert c.post('/admin/api/campaigns/'+received['id'],json={**body,'revision':received['revision']},headers=csrf).status_code==404
+    post(c,'/api/v1/campaigns/'+received['id']+'/displayed',{},bh)
+    next_item=c.get('/api/v1/campaigns',headers=bh).json()['campaign']
+    assert next_item and next_item['id'] not in {received['id'],official['id']}
+
+
 def test_campaign_reset_and_every_open(client):
     c=client;a,ah=user(c,'alice');csrf=admin(c)
     body={'title':'测试','url':'https://example.com/','width':88,'height':65,'audience':'all','startsAt':0,'frequency':'once','enabled':True}
@@ -133,11 +153,23 @@ def test_admin_grant_popup_and_backup_access(client):
     c=client;a,ah=user(c,'alice');csrf=admin(c)
     assert c.get('/admin/api/users/'+a+'/backup').status_code==404
     grant(c,a,csrf,n=8,message={'text':'赠送八枚星币','image':picture(),'background':'#ffeedd','color':'#112233'})
-    item=c.get('/api/v1/campaigns',headers=ah).json()['campaign'];assert item and item['width']==88
+    item=c.get('/api/v1/campaigns',headers=ah).json()['campaign'];assert item and item['width']==68 and item['height']==66
     from urllib.parse import urlsplit
-    r=c.get(urlsplit(item['url']).path);assert '#ffeedd' in r.text and '#112233' in r.text and '<img' in r.text
+    r=c.get(urlsplit(item['url']).path);assert 'class="coin"' in r.text and '+8' in r.text and 'starorbit://campaign/close' in r.text
+    preview=post(c,'/admin/api/star-preview',{'amount':8,'text':'赠送八枚星币','image':picture()},csrf)['html']
+    assert 'class="coin"' in preview and '+8' in preview and 'data:image/jpeg;base64,' in preview
     c.cookies.clear()
     assert c.get('/admin/api/users/'+a+'/detail',headers=ah).status_code==401
     assert c.get('/admin/api/users/'+a+'/backup',headers=ah).status_code==401
     assert c.get('/admin/api/star-codes',headers=ah).status_code==401
     assert c.get('/api/v1/stars').status_code==401
+
+def test_custom_gift_picture_and_template(client):
+    c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');csrf=admin(c);bind(a,b);grant(c,a,csrf)
+    post(c,'/api/v1/stars/gift',{'requestId':key(),'partnerId':b,'amount':5,'note':'一起努力 ✨','image':picture()},ah)
+    campaign=c.get('/api/v1/campaigns',headers=bh).json()['campaign']
+    from urllib.parse import urlsplit
+    page=c.get(urlsplit(campaign['url']).path)
+    assert '一起努力 ✨' in page.text and '+5' in page.text and 'alice' in page.text and '/asset' in page.text
+    assert campaign['width']==68 and campaign['height']==66
+    assert balance(c,ah)==5 and balance(c,bh)==5

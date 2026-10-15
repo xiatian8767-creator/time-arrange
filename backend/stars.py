@@ -85,6 +85,11 @@ class ProfileInput(Strict):
     avatar: str | None = Field(default=None,max_length=250000)
     version: str = Field(default='',max_length=40)
 
+class GiftPresentation(m.Base):
+    __tablename__='star_gift_presentations'
+    message_id=Column(String(32),ForeignKey('star_messages.id'),primary_key=True)
+    amount=Column(BigInteger,nullable=False,default=0)
+
 class Action(Strict):
     requestId: str = Field(pattern=r'^[A-Za-z0-9_-]{16,64}$')
 
@@ -104,6 +109,7 @@ class Gift(Action):
     partnerId: str = Field(pattern=r'^[a-f0-9]{12}$')
     amount: int = Field(strict=True,ge=1,le=1000000)
     note: str = Field(default='',max_length=200)
+    image: str = Field(default='',max_length=250000)
 
 class Redeem(Action):
     code: str = Field(min_length=1,max_length=40)
@@ -153,7 +159,7 @@ def mate(session,token,partner_id):
         raise HTTPException(409,'搭子关系已变化，请刷新后重试')
     return users
 
-def create_message(session,sender,recipient,data,title):
+def create_message(session,sender,recipient,data,title,amount=0):
     if not data.text.strip(): raise HTTPException(422,'请填写内容')
     image_id=None
     if data.templateId:
@@ -164,7 +170,9 @@ def create_message(session,sender,recipient,data,title):
         image_id=ident();session.add(CampaignImage(id=image_id,data=normalized_image(data.image),created_at=now()));session.flush()
     message=StarMessage(id=ident(),sender=sender,recipient=recipient,image_id=image_id,text=data.text.strip(),background=data.background,color=data.color,created_at=now())
     session.add(message)
-    campaign=Campaign(id=ident(),title=title[:80],url=PUBLIC+'/updates/messages/'+message.id+'/',width=88,height=72,audience='custom',user_ids=[recipient],starts_at=data.startsAt or now(),frequency='once',enabled=True,revision=1,created_at=now())
+    session.flush()
+    session.add(GiftPresentation(message_id=message.id,amount=amount))
+    campaign=Campaign(id=ident(),title=title[:80],url=PUBLIC+'/updates/messages/'+message.id+'/',width=68,height=66,audience='custom',user_ids=[recipient],starts_at=data.startsAt or now(),frequency='once',enabled=True,revision=1,created_at=now())
     session.add(campaign)
     return campaign.id
 
@@ -206,7 +214,7 @@ def gift(data:Gift,token=Depends(m.authenticated),session:Session=Depends(m.db))
     if old is not None:return old
     balance=change(session,token.user_id,-data.amount,key,'gift_out',data.partnerId,data.note)
     change(session,data.partnerId,data.amount,key,'gift_in',token.user_id,data.note)
-    create_message(session,token.user_id,data.partnerId,Message(text=users[token.user_id].nickname+' 送给你 '+str(data.amount)+' 星币'+ ('\n'+data.note if data.note else '')),'搭子的星币礼物')
+    create_message(session,token.user_id,data.partnerId,Message(text=data.note.strip() or '送你一点小心意 ✨',image=data.image),'搭子的星币礼物',amount=data.amount)
     return finish(session,key,fp,{'balance':balance,'ok':True})
 
 @router.post('/api/v1/stars/send')
@@ -239,8 +247,27 @@ def redeem(data:Redeem,token=Depends(m.authenticated),session:Session=Depends(m.
 def message_page(message_id:str,session:Session=Depends(m.db)):
     row=session.get(StarMessage,message_id)
     if not row:raise HTTPException(404)
-    image='<img alt="" src="/updates/images/'+row.image_id+'/asset">' if row.image_id else '<div class="star">✦</div>'
-    return HTMLResponse('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:'+row.background+';color:'+row.color+';font-family:system-ui}img{display:block;width:100%;max-height:55vh;object-fit:contain}.star{text-align:center;padding:40px 0 0;font-size:64px;color:#cf994c}p{white-space:pre-wrap;overflow-wrap:anywhere;padding:24px;margin:0;font-size:22px;line-height:1.7}</style>'+image+'<p>'+html.escape(row.text)+'</p></html>',headers={'Content-Security-Policy':"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"})
+    from .gift_view import render_gift
+    presentation=session.get(GiftPresentation,row.id)
+    sender=person(session,session.get(m.User,row.sender)) if not row.sender.startswith('admin:') else None
+    content=render_gift(sender['nickname'] if sender else 'Star Orbit',row.text,'/updates/images/'+row.image_id+'/asset' if row.image_id else '',sender['avatar'] if sender else '',presentation.amount if presentation else 0)
+    return HTMLResponse(content,headers={'Content-Security-Policy':"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"})
+
+@router.get('/updates/gift-art/{name}')
+def gift_art(name:str):
+    if name not in ('star-gift.png','star-letter.png','star-sprites.png'):raise HTTPException(404)
+    return FileResponse(Path(__file__).parent/'gift-art'/name,media_type='image/png')
+
+class GiftPreview(Strict):
+    amount:int=Field(strict=True,ge=1,le=1000000)
+    text:str=Field(default='',max_length=500)
+    image:str=Field(default='',max_length=250000)
+
+@router.post('/admin/api/star-preview')
+def gift_preview(data:GiftPreview,auth=Depends(authorized)):
+    from .gift_view import render_gift
+    image='data:image/jpeg;base64,'+normalized_image(data.image) if data.image else ''
+    return {'html':render_gift('Star Orbit',data.text or '送你一点小心意 ✨',image,amount=data.amount,preview=True)}
 
 @router.get('/admin/api/users/{user_id}/detail')
 def detail(user_id:str,offset:int=Query(0,ge=0,le=1000000),auth=Depends(authorized),session:Session=Depends(m.db)):
@@ -264,7 +291,7 @@ def grant(user_id:str,data:Grant,auth=Depends(authorized),session:Session=Depend
     lock_users(session,[user_id]);key,fp,old=operation(session,'admin:'+auth.username,'grant:'+user_id,data)
     if old is not None:return old
     balance=change(session,user_id,data.amount,key,'admin_grant',auth.username,data.note)
-    if data.message:create_message(session,'admin:'+auth.username,user_id,data.message,'星币到账')
+    if data.message:create_message(session,'admin:'+auth.username,user_id,data.message,'星币到账',amount=data.amount)
     session.add(Audit(id=ident(),admin=auth.username,user_id=user_id,action='star_grant',created_at=int(time.time())))
     return finish(session,key,fp,{'balance':balance,'ok':True})
 
