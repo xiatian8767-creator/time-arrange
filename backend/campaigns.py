@@ -49,9 +49,9 @@ def image_asset(image_id: str, session: Session=Depends(m.db)):
     if not row: raise HTTPException(404,'图片不存在')
     return Response(base64.b64decode(row.data),media_type='image/jpeg',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'public, max-age=86400'})
 
-@router.get('/updates/3.2beta.6/',include_in_schema=False)
+@router.get('/updates/3.3beta.3/',include_in_schema=False)
 def new_release_page():
-    return FileResponse(Path(__file__).parent/'updates'/'3.2beta.6.html',headers={'Cache-Control':'no-cache','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"})
+    return FileResponse(Path(__file__).parent/'updates'/'3.3beta.3.html',headers={'Cache-Control':'no-cache','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"})
 
 @router.get('/admin/campaign-media.js',include_in_schema=False)
 def media_script():
@@ -61,6 +61,7 @@ def media_script():
 @router.get('/updates/3.2beta.1/', include_in_schema=False)
 @router.get('/updates/3.2beta.2/', include_in_schema=False)
 @router.get('/updates/3.2beta.3/', include_in_schema=False)
+@router.get('/updates/3.2beta.6/', include_in_schema=False)
 def update_page():
     raise HTTPException(410, '此升级页面已下线')
 
