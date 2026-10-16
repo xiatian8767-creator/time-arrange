@@ -1,0 +1,13 @@
+.week-nav{display:flex;justify-content:space-between;gap:12px}
+.week-nav #today{display:none!important}
+.week-nav #star-week-controls{order:0;width:auto;flex:0 1 auto;justify-content:flex-start;gap:5px}
+.week-nav #star-week-controls>div{flex:0 1 auto;min-width:0;text-align:center}
+.week-nav #star-week-controls strong{white-space:nowrap;font-size:clamp(12px,3.8vw,17px)}
+.week-nav #star-week-controls button{flex:none;width:24px;min-height:40px;font-size:25px}
+.week-nav #star-week-controls #prev{order:-1}.week-nav #star-week-controls #next{order:1}
+.week-nav #star-top{flex:0 0 auto;width:auto;gap:0}
+.gift-burst{position:fixed;width:0;height:0;pointer-events:none;z-index:9999}
+.gift-burst i{position:absolute;width:7px;height:11px;border-radius:2px}
+.star-success .sheet{animation:gift-success-in .2s ease-out}
+@keyframes gift-success-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.star-success .sheet{animation:none}}

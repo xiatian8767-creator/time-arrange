@@ -72,7 +72,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 3.3beta.2 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 3.3beta.3 · 探索版';
 
   };
   function accountSettings(){

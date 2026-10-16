@@ -172,7 +172,7 @@ def create_message(session,sender,recipient,data,title,amount=0):
     session.add(message)
     session.flush()
     session.add(GiftPresentation(message_id=message.id,amount=amount))
-    campaign=Campaign(id=ident(),title=title[:80],url=PUBLIC+'/updates/messages/'+message.id+'/',width=68,height=66,audience='custom',user_ids=[recipient],starts_at=data.startsAt or now(),frequency='once',enabled=True,revision=1,created_at=now())
+    campaign=Campaign(id=ident(),title=title[:80],url=PUBLIC+'/updates/messages/'+message.id+'/',width=68,height=48,audience='custom',user_ids=[recipient],starts_at=data.startsAt or now(),frequency='once',enabled=True,revision=1,created_at=now())
     session.add(campaign)
     return campaign.id
 

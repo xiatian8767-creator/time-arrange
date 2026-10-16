@@ -153,7 +153,7 @@ def test_admin_grant_popup_and_backup_access(client):
     c=client;a,ah=user(c,'alice');csrf=admin(c)
     assert c.get('/admin/api/users/'+a+'/backup').status_code==404
     grant(c,a,csrf,n=8,message={'text':'赠送八枚星币','image':picture(),'background':'#ffeedd','color':'#112233'})
-    item=c.get('/api/v1/campaigns',headers=ah).json()['campaign'];assert item and item['width']==68 and item['height']==66
+    item=c.get('/api/v1/campaigns',headers=ah).json()['campaign'];assert item and item['width']==68 and item['height']==48
     from urllib.parse import urlsplit
     r=c.get(urlsplit(item['url']).path);assert 'class="coin"' in r.text and '+8' in r.text and 'starorbit://campaign/close' in r.text
     preview=post(c,'/admin/api/star-preview',{'amount':8,'text':'赠送八枚星币','image':picture()},csrf)['html']
@@ -171,5 +171,5 @@ def test_custom_gift_picture_and_template(client):
     from urllib.parse import urlsplit
     page=c.get(urlsplit(campaign['url']).path)
     assert '一起努力 ✨' in page.text and '+5' in page.text and 'alice' in page.text and '/asset' in page.text
-    assert campaign['width']==68 and campaign['height']==66
+    assert campaign['width']==68 and campaign['height']==48
     assert balance(c,ah)==5 and balance(c,bh)==5
