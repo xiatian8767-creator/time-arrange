@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew Star Orbit public IP TLS certificate
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/local/sbin/star-orbit-renew-certificate
+TimeoutStartSec=300
