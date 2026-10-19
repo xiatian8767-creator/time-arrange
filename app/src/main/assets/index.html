@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="ui-refresh.css">
   <link rel="stylesheet" href="time-wheel.css">
   <link rel="stylesheet" href="beta21.css">
-<link rel="stylesheet" href="stars.css"><link rel="stylesheet" href="stars-gifting.css"><link rel="stylesheet" href="gift-compact.css"></head>
+<link rel="stylesheet" href="stars.css"><link rel="stylesheet" href="stars-gifting.css"><link rel="stylesheet" href="gift-compact.css"><link rel="stylesheet" href="patch-33b4.css"></head>
 <body>
 <main>
   <section id="schedule-page" class="page active" aria-labelledby="nav-schedule">
@@ -51,17 +51,11 @@
       <div><div class="section-kicker">我的安排</div><h2>今天的待办</h2><p id="todo-subtitle"></p></div>
       <button id="add-todo" class="round-add" aria-label="新增待办">＋</button>
     </section>
-    <section class="todo-summary" aria-label="待办概况">
-      <div><strong id="todo-pending-count">0</strong><span>待完成</span></div>
-      <div><strong id="todo-today-count">0</strong><span>今天到期</span></div>
-      <div><strong id="todo-done-count">0</strong><span>已完成</span></div>
+    <section id="todo-filters" class="todo-summary" aria-label="筛选待办">
+      <button type="button" data-filter="pending" aria-pressed="true"><strong id="todo-pending-count">0</strong><span>待完成</span></button>
+      <button type="button" data-filter="today" aria-pressed="false"><strong id="todo-today-count">0</strong><span>今天</span></button>
+      <button type="button" data-filter="completed" aria-pressed="false"><strong id="todo-done-count">0</strong><span>已完成</span></button>
     </section>
-    <nav id="todo-filters" class="todo-filters" aria-label="筛选待办">
-      <button data-filter="pending" class="selected">待完成</button>
-      <button data-filter="today">今天</button>
-      <button data-filter="all">全部</button>
-      <button data-filter="completed">已完成</button>
-    </nav>
     <section id="todo-list" class="todo-list" aria-live="polite"></section>
     <p id="notification-note" class="notification-note"></p>
     <div class="reminder-actions"><button id="notification-settings" class="secondary" hidden>开启系统通知</button><button id="exact-settings" class="secondary" hidden>允许准时提醒</button></div>

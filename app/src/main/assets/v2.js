@@ -40,7 +40,21 @@
   }
   function setDocument(document){applying=true;try{save(document);}finally{applying=false;}}
   function summary(doc){return doc?doc.courses.length+' 门课程 / '+doc.slots.length+' 个时间段 / '+doc.todos.length+' 项待办':'云端尚无数据';}
-  async function refreshPartner(){const generation=epoch;const info=await api('/partner');if(epoch!==generation)return;if(document.hidden){clearOnlineMate();return;}partnerInfo=info;if(info.partner&&info.partner.schedule){partner=C.scheduleOnly(info.partner.schedule);onlineMate=true;renderSchedule();}else clearOnlineMate();partnerInfo=info;}
+  let partnerFlight=null,partnerFetchedAt=0,partnerEpoch=-1;
+  async function refreshPartner(){
+    if(!cloud.user||cloud.needsLogin)return;
+    if(partnerEpoch===epoch&&partnerFlight)return partnerFlight;
+    if(partnerEpoch===epoch&&Date.now()-partnerFetchedAt<2000)return;
+    const generation=epoch;partnerEpoch=generation;
+    const request=(async()=>{const info=await api('/partner');if(epoch!==generation)return;
+      if(info.partner&&info.partner.schedule){partner=C.scheduleOnly(info.partner.schedule);onlineMate=true;cloud.partnerCache={userId:cloud.user.userId,info};}
+      else{clearOnlineMate();delete cloud.partnerCache;}
+      partnerInfo=info;persist();partnerFetchedAt=Date.now();renderSchedule();
+    })();partnerFlight=request;
+    try{return await request;}finally{if(partnerFlight===request)partnerFlight=null;}
+  }
+  if(cloud.user&&cloud.partnerCache?.userId===cloud.user.userId){try{const info=cloud.partnerCache.info;if(info?.partner?.schedule){partner=C.scheduleOnly(info.partner.schedule);partnerInfo=info;onlineMate=true;renderSchedule();}}catch(e){delete cloud.partnerCache;}}
+
   async function sync(manual=false){
     if(!cloud.user||syncing)return;syncing=true;const generation=epoch;
     try{
@@ -55,7 +69,7 @@
         cloud.revision=result.revision;cloud.synced=sent;persist();
       }
       syncStatus='已同步 · '+new Date().toLocaleTimeString();await refreshPartner();if(manual)notify(syncStatus);
-    }catch(e){syncStatus=e.status===409?'云端已有修改，请再次同步处理冲突':e.message;clearOnlineMate();if(manual)notify(syncStatus);}
+    }catch(e){syncStatus=e.status===409?'云端已有修改，请再次同步处理冲突':e.message;if(manual)notify(syncStatus);}
     finally{syncing=false;}
   }
   function conflict(remote){
@@ -67,12 +81,12 @@
   }
   window.addEventListener('star-data-changed',()=>{if(applying)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>sync(),1800);});
   setInterval(()=>{if(!document.hidden&&$('modal').hidden)sync();},45000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync();else clearOnlineMate();});
+  // Foreground entry below refreshes partner data independently of personal sync.
 
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 3.3beta.3 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 3.3beta.4 · 探索版';
 
   };
   function accountSettings(){
@@ -114,7 +128,7 @@
   window.openOnlinePartner=async()=>{
     if(!cloud.user){loginForm();return;}
     const generation=epoch;
-    try{await refreshPartner();}catch(e){clearOnlineMate();notify(e.message);return;}
+    try{await refreshPartner();}catch(e){notify(e.message);return;}
     const info=partnerInfo;
     if(epoch!==generation||!info||document.hidden)return;
     showModal('在线搭子','<p class="hint">我的 ID：'+esc(cloud.user.userId)+'<br>绑定后仅共享昵称、ID、课表和作息，待办始终私有。</p>'+(info.partner?'<div class="account-banner"><strong>'+esc(info.partner.nickname)+'</strong><small>'+esc(info.partner.userId)+'</small></div><button id="online-unbind" class="danger">解除绑定</button>':'<form id="partner-search"><label>精确搜索用户 ID<input id="lookup-id" required pattern="[a-f0-9]{12}" maxlength="12" placeholder="12 位用户 ID"></label><button class="primary">搜索</button></form><div id="lookup-result"></div>')+'<h3>收到的邀请</h3><div id="incoming-list"></div><h3>发出的邀请</h3><div id="outgoing-list"></div>');
@@ -124,7 +138,7 @@
     $('dialog-body').querySelectorAll('[data-invitation]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/partner/invitations/'+b.dataset.invitation,'PATCH',{action:b.dataset.action});await window.openOnlinePartner();}catch(e){notify(e.message);b.disabled=false;}});
     if(info.partner)$('online-unbind').onclick=()=>{
       showModal('解除搭子绑定？','<p class="hint">解除后双方不能继续读取对方课表。此前已经查看或自行保存的内容无法远程收回。</p><button class="danger" id="unbind-confirm">确认解除</button>');
-      $('unbind-confirm').onclick=async()=>{try{await api('/partner','DELETE');clearOnlineMate();await window.openOnlinePartner();}catch(e){notify(e.message);}};
+      $('unbind-confirm').onclick=async()=>{try{await api('/partner','DELETE');clearOnlineMate();delete cloud.partnerCache;persist();partnerFetchedAt=0;await window.openOnlinePartner();}catch(e){notify(e.message);}};
     };
     else $('partner-search').onsubmit=async e=>{e.preventDefault();try{const user=await api('/users/lookup?userId='+encodeURIComponent($('lookup-id').value));$('lookup-result').innerHTML='<div class="invitation"><strong>'+esc(user.nickname)+'</strong><small>'+esc(user.userId)+'</small><button id="send-invite" class="primary">发送搭子邀请</button></div>';$('send-invite').onclick=async()=>{try{await api('/partner/invitations','POST',{userId:user.userId});await window.openOnlinePartner();}catch(err){notify(err.message);}};}catch(err){notify(err.message);}};
   };
@@ -224,8 +238,9 @@
   }
   window.campaignResult=(id,loaded)=>{const current=campaignActive;if(!current||current.id!==id||current.generation!==epoch)return;if(loaded){cloud.campaignReceipts=[...(cloud.campaignReceipts||[]),current.key].slice(-200);persist();current.ack=api('/campaigns/'+id+'/displayed','POST',{period:current.period}).catch(()=>{});}};
   window.campaignClosed=async id=>{const current=campaignActive;if(!current||current.id!==id)return;await current.ack;if(campaignActive!==current)return;campaignActive=null;setTimeout(()=>{if(current.generation===epoch)checkCampaign(true,[...current.skipped,id]);},250);};
-  window.appEntered=()=>{if(!window.authLocked)checkCampaign();};
+  let enteredAt=0,enteredEpoch=-1;
+  window.appEntered=()=>{if(window.authLocked||document.hidden||!cloud.user||cloud.needsLogin)return;if(enteredEpoch===epoch&&Date.now()-enteredAt<2000)return;enteredEpoch=epoch;enteredAt=Date.now();refreshPartner().catch(()=>{});sync();window.dispatchEvent(new Event('star-app-entered'));checkCampaign();};
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)window.appEntered();});
   lockAccount(!cloud.user||Boolean(cloud.needsLogin)||Boolean(cloud.securityRequired));
-  if(!cloud.user||cloud.needsLogin)loginForm();else if(cloud.securityRequired)securityForm(true);else if(!loadingError)setTimeout(()=>{sync();checkCampaign();},500);
+  if(!cloud.user||cloud.needsLogin)loginForm();else if(cloud.securityRequired)securityForm(true);else if(!loadingError)setTimeout(()=>window.appEntered(),500);
 })();
