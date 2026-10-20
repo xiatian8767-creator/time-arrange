@@ -23,6 +23,7 @@ try:
     with Session(isolated) as s:
         s.add(m.User(id=user,username='isolated_ai_test',password_hash='unused-test-only',nickname='isolated',revision=0))
         s.flush();s.add(Wallet(user_id=user,balance=100));s.add(a.Config(id='default',secret=a.cipher().encrypt(b'sk-fake-test-only').decode(),rules=a.Rules(enabled=True,period='peak').model_dump()));s.commit()
+    a.initialize()
     entered=threading.Event();release=threading.Event();calls=[]
     original=a.provider_call
     def fake(*args):

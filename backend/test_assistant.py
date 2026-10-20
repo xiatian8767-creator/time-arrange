@@ -18,7 +18,7 @@ from backend.stars import Wallet, Transaction, change, lock_users
 @pytest.fixture
 def client(tmp_path,monkeypatch):
     original=m.engine;m.engine=create_engine('sqlite://',connect_args={'check_same_thread':False},poolclass=StaticPool)
-    m.limits.clear();key=tmp_path/'key';key.write_bytes(Fernet.generate_key());monkeypatch.setenv('AI_KEY_FILE',str(key))
+    m.limits.clear();a.rotation=0;key=tmp_path/'key';key.write_bytes(Fernet.generate_key());monkeypatch.setenv('AI_KEY_FILE',str(key))
     with TestClient(m.app,base_url='https://testserver') as c:yield c
     m.engine.dispose();m.engine=original
 
@@ -51,7 +51,7 @@ def test_admin_credentials_encrypted_csrf_and_defaults(client):
     setup(c,csrf)
     d=c.get('/admin/api/assistant').json();assert d['hasKey'] and d['multiplier']=='5' and d['coinsPerYuan']==100
     assert 'sk-test' not in json.dumps(d)
-    with Session(m.engine) as s:assert 'sk-test' not in s.get(a.Config,'default').secret
+    with Session(m.engine) as s:assert 'sk-test' not in s.get(a.Endpoint,'legacy-default').secret
     assert 'apiKey' not in c.get('/api/v1/ai/status',headers=h).text
     assert c.post('/admin/api/assistant',json={'enabled':True,'apiKey':''},headers=csrf).status_code==200
     assert c.get('/admin/api/assistant').json()['hasKey']

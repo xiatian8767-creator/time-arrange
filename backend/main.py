@@ -70,7 +70,8 @@ class Invitation(Base):
 @asynccontextmanager
 async def lifespan(app):
     Base.metadata.create_all(engine)
-    from .assistant import recover_all
+    from .assistant import recover_all, initialize
+    initialize()
     recover_all()
     yield
 
