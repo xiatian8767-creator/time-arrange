@@ -1,4 +1,5 @@
 # Codex 验证产生的工具、构建中间物、截图、日志和模拟器数据
+ai-secrets/
 test/
 tests/
 

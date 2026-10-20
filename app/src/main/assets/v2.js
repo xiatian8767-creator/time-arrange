@@ -84,9 +84,9 @@
   // Foreground entry below refreshes partner data independently of personal sync.
 
   window.extendSettings=()=>{
-    $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">AI 助手设置<small>密钥仅保存在此设备</small></button>');
+    $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">星小助<small>使用星币对话</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 3.3beta.4 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit 3.4beta.1 · 探索版';
 
   };
   function accountSettings(){
@@ -143,15 +143,14 @@
     else $('partner-search').onsubmit=async e=>{e.preventDefault();try{const user=await api('/users/lookup?userId='+encodeURIComponent($('lookup-id').value));$('lookup-result').innerHTML='<div class="invitation"><strong>'+esc(user.nickname)+'</strong><small>'+esc(user.userId)+'</small><button id="send-invite" class="primary">发送搭子邀请</button></div>';$('send-invite').onclick=async()=>{try{await api('/partner/invitations','POST',{userId:user.userId});await window.openOnlinePartner();}catch(err){notify(err.message);}};}catch(err){notify(err.message);}};
   };
 
-  // AI conversation stays in memory. Keys never enter export, cloud sync or JS requests.
+  // Conversation stays in memory; the server owns model credentials and billing.
   let history=[],photo=[],aiBusy=false;
-  const defaults={deepseek:{baseUrl:'https://api.deepseek.com',model:'deepseek-flash'},qwen:{baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen3-vl-plus'}};
-  function aiSettings(){
-    const config=native?read('ai'):memoryAI,provider=config.provider||'deepseek';
-    showModal('AI 助手设置','<form id="ai-config-form"><p class="hint">选择服务商并填写 API Key，即可开始。使用费用由服务商收取。</p><label>服务商<select id="ai-provider"><option value="deepseek">DeepSeek</option><option value="qwen">Qwen（通义千问）</option></select></label><input id="ai-base" type="hidden" value="'+esc(config.baseUrl||defaults[provider].baseUrl)+'"><input id="ai-model" type="hidden" value="'+esc(config.model||defaults[provider].model)+'"><label>API Key<input id="ai-key" type="password" autocomplete="off" maxlength="1000" placeholder="'+(config.key?'已保存；留空保持原 Key':'填写个人 API Key')+'"></label><p class="hint">照片识别请选择 Qwen。</p><div class="cloud-actions"><button type="button" id="ai-key-delete" class="danger">删除 Key</button><button class="primary">保存</button></div></form>');
-    $('ai-provider').value=provider;$('ai-provider').onchange=()=>{const d=defaults[$('ai-provider').value];$('ai-base').value=d.baseUrl;$('ai-model').value=d.model;$('ai-key').value='';$('ai-key').placeholder='服务商已切换，请填写对应 Key';};
-    $('ai-config-form').onsubmit=e=>{e.preventDefault();try{const p=$('ai-provider').value,key=$('ai-key').value.trim()||(p===provider?config.key:'');if(!key)throw Error('请填写 API Key');const url=new URL($('ai-base').value.trim());if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash)throw Error('请填写有效 HTTPS 官方地址');write('ai',{provider:p,key,baseUrl:url.href.replace(/\/$/,''),model:$('ai-model').value.trim()});closeModal();notify(native?'设置已保存':'浏览器预览不支持联网；Key 未持久保存');}catch(err){notify(err.message);}};
-    $('ai-key-delete').onclick=()=>{write('ai',{});closeModal();notify('Key 已删除');};
+  async function aiSettings(){
+    const generation=epoch;showModal('星小助','<p class="hint" id="assistant-account">正在读取星币信息…</p>');
+    try{const info=await api('/ai/status');if(generation!==epoch||!$('assistant-account'))return;
+      $('dialog-body').innerHTML='<div class="ai-billing-info"><span>可用星币</span><b>✦ '+esc(info.balance)+'</b></div><p class="hint">'+(info.enabled?'用星币和星小助聊聊，也可以上传照片整理课表。':'星小助暂未开放，请稍后再来。')+'</p><p class="hint">按实际用量计费，每次向上取整为整数星币。完成的回复下方会显示消耗；照片识别也包含在内。当前换算：1 元 = '+esc(info.coinsPerYuan)+' 星币。生成建议后是否保存，由你确认。</p><button id="assistant-redeem" class="setting-action">兑换星币</button>';
+      $('assistant-redeem').onclick=()=>{$('star-plus')?.click();};
+    }catch(e){if($('assistant-account'))$('assistant-account').textContent=e.message;}
   }
   function message(text,role='assistant'){const el=document.createElement('div');el.className='ai-message '+role;el.textContent=text;$('ai-messages').appendChild(el);$('ai-welcome').hidden=true;el.scrollIntoView({block:'end'});return el;}
   function openAI(){if(window.authLocked)return;closeModal();$('ai-panel').hidden=false;document.body.style.overflow='hidden';$('ai-welcome').hidden=Boolean($('ai-messages').children.length);}
@@ -160,7 +159,8 @@
   const oldBack=window.handleBack;window.handleBack=()=>{if(!$('modal').hidden)return oldBack();if(!$('ai-panel').hidden){closeAI();return true;}return oldBack();};
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('modal').hidden&&!$('ai-panel').hidden)closeAI();});
   function renderPhotos(){const preview=$('ai-photo-preview');preview.hidden=!photo.length;$('ai-photo').hidden=true;let list=$('ai-photo-list');if(!list){list=document.createElement('div');list.id='ai-photo-list';preview.prepend(list);}list.replaceChildren();photo.forEach((data,index)=>{const item=document.createElement('div'),img=document.createElement('img'),remove=document.createElement('button');img.src=data;img.alt='待发送照片 '+(index+1);remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','移除第 '+(index+1)+' 张照片');remove.onclick=()=>{photo.splice(index,1);renderPhotos();};item.append(img,remove);list.append(item);});$('ai-photo-remove').textContent='清空 '+photo.length+'/10';}
-  window.receiveAIPhoto=data=>{if(photo.length>=10)return notify('最多上传十张照片');photo.push(data);renderPhotos();};
+  let photoLoading=false;
+  window.receiveAIPhoto=async data=>{if(photo.length>=10)return notify('最多上传十张照片');if(photoLoading)return notify('正在处理照片，请稍候');photoLoading=true;try{if(data.length>250000){const img=new Image();img.src=data;await img.decode();const canvas=document.createElement('canvas'),scale=Math.min(1,1280/Math.max(img.width,img.height));canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);for(let q=.85;q>=.25;q-=.1){data=canvas.toDataURL('image/jpeg',q);if(data.length<=250000)break;}if(data.length>250000)throw Error('照片过大，请裁剪后重试');}photo.push(data);renderPhotos();}catch(e){notify(e.message||'照片处理失败');}finally{photoLoading=false;}};
   $('ai-upload').onclick=()=>native?Online.pickPhoto(false):notify('请在安卓应用中选择照片');$('ai-camera').onclick=()=>native?Online.pickPhoto(true):notify('请在安卓应用中拍照');
   $('ai-photo-remove').onclick=()=>{photo=[];renderPhotos();};
   $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');history=[];$('ai-messages').replaceChildren();$('ai-photo-remove').click();$('ai-welcome').hidden=false;};
@@ -177,19 +177,23 @@
   }
   $('ai-form').onsubmit=async e=>{
     e.preventDefault();if(aiBusy)return;
-    const config=native?read('ai'):memoryAI;if(!config.key){aiSettings();return;}
+    if(window.authLocked||!cloud.user){loginForm();return;}if(photoLoading)return notify('照片还在处理中，请稍候');
     const prompt=$('ai-input').value.trim(),sentPhotos=photo.slice();if(!prompt&&!sentPhotos.length)return;
     const base=rawState(),generation=epoch,permissions={schedule:true,todos:true};
     const context={version:2,now:Date.now(),localTime:new Date().toString()};if(permissions.schedule){context.slots=state.slots;context.courses=state.courses;}if(permissions.todos)context.todos=state.todos;
     const system='你是Star Orbit助手。仅输出 JSON 对象：{"message":"中文回答","warnings":["不确定信息"],"operations":[]}。聊天时 operations 为空。所有操作都是等待用户确认的建议，不要宣称已执行。只使用用户授权提供的数据。不确定的图片文字不得编造。支持 type: course.create/course.update/course.delete/todo.create/todo.update/todo.delete（字段 id，value 不含 id）；新记录生成唯一字符串 id，update 只列变化字段。course value 包含 day(1-7),start/end(时间段id),name,color(#rrggbb),room,note；todo value 包含 title,dueAt(毫秒),createdAt(毫秒),priority(low/normal/high),note,completed,remind,alarmEnabled(布尔，默认false),alarmAt(毫秒，默认0)。只有用户明确要求闹钟才开启alarmEnabled，并提供alarmAt；普通提醒只设remind。更换作息或整张课表只允许 schedule.replace，带完整 slots 和 courses 数组（课程含 id），保留待办。slots 包含 id,start/end(HH:mm)，活动段可含 kind:activity,label。时间不重叠，课程不冲突。课程与待办字段长度限制分别遵循名称30/标题80/地点60/备注500。当前授权上下文 JSON：'+JSON.stringify(context);
     const content=sentPhotos.length?[{type:'text',text:prompt||'请查看这些图片，综合识别其中的安排，合并重复信息；不确定的内容先询问，所有修改先给出建议。'},...sentPhotos.map(url=>({type:'image_url',image_url:{url}}))]:prompt;
     const sent=message(prompt,'user');if(sentPhotos.length){const gallery=document.createElement('div');gallery.className='ai-sent-gallery';sentPhotos.forEach((data,i)=>{const img=document.createElement('img');img.src=data;img.alt='本条消息的图片 '+(i+1);img.className='ai-sent-photo';gallery.append(img);});sent.append(gallery);}photo=[];renderPhotos();$('ai-input').value='';aiBusy=true;$('ai-send').disabled=true;const waiting=message('正在思考，请稍候……');
+    let billed=0;const billedIds=new Set();
+    const receipt=response=>{if(response.billing&&generation===epoch&&!billedIds.has(response.billing.requestId)){billedIds.add(response.billing.requestId);billed+=response.billing.coins;window.dispatchEvent(new Event('star-wallet-updated'));}};
+    const displayCost=()=>{if(billed){let footer=waiting.querySelector('.ai-billing');if(!footer){footer=document.createElement('small');footer.className='ai-billing';waiting.append(footer);}footer.textContent='本次消耗 '+billed+' 星币';}waiting.scrollIntoView({block:'end'});};
     try{
       // Conversation contains only user prompts / answers, not prior private contexts or images.
       const contract='补充协议：权限为 '+JSON.stringify(permissions)+'。未授权的类型不得生成操作，请在 message 中提示勾选对应权限。create 不需要 id，由客户端生成；update/delete 的 id 必须来自上下文已有记录。待办 dueAt 优先使用带时区的 ISO 8601 日期时间，例如 2026-10-04T09:00:00+08:00，禁止秒时间戳。用户未指定具体时刻时先询问，不生成待办。缺省 priority=normal、completed=false、remind=false、note=""，只有明确要求提醒才设置 remind=true。操作示例：{"message":"请预览确认","warnings":[],"operations":[{"type":"todo.create","value":{"title":"喝一杯牛奶","dueAt":"2026-10-04T09:00:00+08:00"}}]}。示例时间仅展示格式，实际日期根据当前时间和用户要求计算。';
       const scheduleContract='当前客户端支持修改作息，不要沿用历史回复中的不支持结论。仅调整作息请使用 {"type":"slots.replace","slots":[完整时间段]}，保留已有课程引用的 id；按图片导入新作息与课程用 {"type":"schedule.replace","slots":[完整时间段],"courses":[完整课程]}。整表替换必须保留用户未要求删除的现有课程并适配新节次；不能确定映射就询问。也可先 slots.replace 再逐条 course.create；新增课程 id 可省略，color/room/note 可省略。示例：{"type":"schedule.replace","slots":[{"id":"s1","start":"08:00","end":"08:45"}],"courses":[{"day":1,"start":"s1","end":"s1","name":"数学"}]}。图片任务应同时识别节次时间和课程，不能因为现有作息缺少节次就拒绝。校验错误应修正字段和操作，不要声称客户端没有明确列出的能力。';
       const messages=[{role:'system',content:system+'\n'+contract+'\n'+scheduleContract},...history.slice(-8),{role:'user',content}];
-      const requestAI=()=>transport({target:'ai',body:{model:config.model,messages,stream:false,max_tokens:8192,response_format:{type:'json_object'}}});
+      let previousRequestId='';
+      const requestAI=async()=>{const requestId=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join(''),body={requestId,messages,...(previousRequestId?{continuationOf:previousRequestId}:{})};try{const response=await api('/ai/chat','POST',body);previousRequestId=requestId;receipt(response);return response;}catch(error){if(!error.status||[502,504].includes(error.status)){try{const response=await api('/ai/requests/'+requestId);previousRequestId=requestId;receipt(response);return response;}catch(recovery){if(recovery.status===409){error.message='回复仍在处理中，请点击查询；不会重复扣费';error.pendingId=requestId;}}}throw error;}};
       let response=await requestAI();
       if(generation!==epoch)throw Error('账号已切换，已丢弃此回复');
       const choice=response.choices&&response.choices[0];if(!choice||choice.finish_reason==='length')throw Error('回复不完整，请缩小任务后重试');
@@ -207,7 +211,7 @@
       }
       waiting.textContent=result.message;history.push({role:'user',content:prompt},{role:'assistant',content:result.message});history=history.slice(-8);
       if(result.changes.length){const button=document.createElement('button');button.className='primary';button.textContent='预览 '+result.changes.length+' 项修改';button.onclick=()=>preview(result,base,generation);waiting.appendChild(button);}
-    }catch(err){waiting.textContent='未修改任何数据：'+err.message;}finally{aiBusy=false;$('ai-send').disabled=false;}
+    }catch(err){waiting.textContent='未修改任何数据：'+err.message;if(err.pendingId){const button=document.createElement('button');button.type='button';button.className='ai-recover';button.textContent='查询原回复';button.onclick=async()=>{button.disabled=true;try{const response=await api('/ai/requests/'+err.pendingId);if(generation!==epoch)throw Error('账号已切换');receipt(response);const result=StarAI.proposal(JSON.parse(base),StarAI.parse(response.choices[0].message.content),permissions);waiting.textContent=result.message;history.push({role:'user',content:prompt},{role:'assistant',content:result.message});history=history.slice(-8);if(result.changes.length){const previewButton=document.createElement('button');previewButton.className='primary';previewButton.textContent='预览 '+result.changes.length+' 项修改';previewButton.onclick=()=>preview(result,base,generation);waiting.append(previewButton);}}catch(e){notify(e.message);}finally{button.disabled=false;displayCost();}};waiting.append(button);}}finally{displayCost();aiBusy=false;$('ai-send').disabled=false;}
   };
   const fab=$('ai-fab');let drag=null,suppress=false;
   function place(x,y){fab.style.left=Math.max(8,Math.min(innerWidth-60,x))+'px';fab.style.top=Math.max(8,Math.min(innerHeight-70,y))+'px';fab.style.right='auto';fab.style.bottom='auto';}

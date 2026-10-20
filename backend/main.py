@@ -70,6 +70,8 @@ class Invitation(Base):
 @asynccontextmanager
 async def lifespan(app):
     Base.metadata.create_all(engine)
+    from .assistant import recover_all
+    recover_all()
     yield
 
 
@@ -101,8 +103,9 @@ async def guard(request: Request, call_next):
         body = bytearray()
         async for chunk in request.stream():
             body.extend(chunk)
-            if len(body) > 1024 * 1024:
-                return JSONResponse({"detail": "请求不能超过 1 MB"}, status_code=413)
+            limit = 4 * 1024 * 1024 if request.url.path == '/api/v1/ai/chat' else 1024 * 1024
+            if len(body) > limit:
+                return JSONResponse({"detail": "请求内容过大，请缩小后重试"}, status_code=413)
         request._body = bytes(body)
         result = await call_next(request)
         result.headers["Cache-Control"] = "no-store"
@@ -320,3 +323,5 @@ app.include_router(security_router)
 app.include_router(campaigns_router)
 from .stars import router as stars_router
 app.include_router(stars_router)
+from .assistant import router as assistant_router
+app.include_router(assistant_router)

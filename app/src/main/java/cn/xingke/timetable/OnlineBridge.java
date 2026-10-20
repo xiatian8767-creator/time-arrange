@@ -96,14 +96,7 @@ public final class OnlineBridge {
                 JSONObject req=new JSONObject(raw);boolean ai=req.optString("target").equals("ai");
                 String auth,method,endpoint;
                 if(ai){
-                    JSONObject config=new JSONObject(load("ai"));
-                    String provider=config.getString("provider"),base=config.getString("baseUrl");
-                    URL parsed=https(base);String host=parsed.getHost();
-                    boolean valid=provider.equals("deepseek")?host.equals("api.deepseek.com"):
-                        provider.equals("qwen")&&(host.equals("dashscope.aliyuncs.com")||host.equals("dashscope-intl.aliyuncs.com")||host.matches("[a-zA-Z0-9-]+\\.(cn-beijing|ap-southeast-1|us-east-1|eu-central-1|ap-northeast-1|cn-hongkong)\\.maas\\.aliyuncs\\.com"));
-                    if(!valid)throw new Exception("模型地址必须是所选服务商的官方域名");
-                    endpoint=base.replaceAll("/+$","")+"/chat/completions";method="POST";auth=config.getString("key");
-                    if(auth.isEmpty())throw new Exception("请先设置 API Key");
+                    throw new Exception("请通过星币服务使用星小助");
                 }else{
                     JSONObject cloud=new JSONObject(load("cloud"));
                     if(!CLOUD_BASE_URL.equals(cloud.optString("baseUrl")))throw new Exception("请重新登录");
@@ -117,7 +110,7 @@ public final class OnlineBridge {
                 if(!ai&&connection.getURL().getHost().equals("8.154.43.154")&&connection.getURL().getPort()==-1){
                     connection.setSSLSocketFactory(betaSocketFactory());
                 }
-                connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(ai?90000:20000);
+                connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(endpoint.endsWith("/api/v1/ai/chat")?100000:20000);
                 connection.setRequestMethod(method);connection.setRequestProperty("Accept","application/json");
                 if(!auth.isEmpty())connection.setRequestProperty("Authorization","Bearer "+auth);
                 if(req.has("body")){

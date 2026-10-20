@@ -148,7 +148,9 @@ def finish(session, key, fingerprint, result):
 def change(session,user_id,amount,key,kind,counterpart='',note=''):
     row=wallet(session,user_id)
     if row.balance+amount<0: raise HTTPException(409,'星币不足')
-    if row.balance+amount>1000000000: raise HTTPException(409,'余额已达上限')
+    from .assistant import Call
+    held=session.scalar(select(func.coalesce(func.sum(Call.reserved),0)).where(Call.user_id==user_id,Call.state=='pending')) or 0
+    if row.balance+amount+held>1000000000: raise HTTPException(409,'余额已达上限')
     row.balance+=amount
     session.add(Transaction(id=ident(),user_id=user_id,operation_id=key,amount=amount,balance=row.balance,kind=kind,counterpart=counterpart,note=note,created_at=now()))
     return row.balance
@@ -193,8 +195,11 @@ def ledger(session,user_id,offset=0):
 
 @router.get('/api/v1/stars')
 def overview(token=Depends(m.authenticated),session:Session=Depends(m.db)):
+    from .assistant import recover_user
+    lock_users(session,[token.user_id]);recover_user(session,token.user_id)
     user=session.get(m.User,token.user_id);w=session.get(Wallet,user.id)
-    return {'user':person(session,user),'partner':person(session,session.get(m.User,user.partner_id)) if user.partner_id else None,'balance':w.balance if w else 0}
+    result={'user':person(session,user),'partner':person(session,session.get(m.User,user.partner_id)) if user.partner_id else None,'balance':w.balance if w else 0}
+    session.commit();return result
 
 @router.post('/api/v1/stars/profile')
 def profile(data:ProfileInput,token=Depends(m.authenticated),session:Session=Depends(m.db)):
