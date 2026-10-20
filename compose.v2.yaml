@@ -17,6 +17,10 @@ services:
     cap_drop: [ALL]
     read_only: true
     tmpfs: [/tmp]
+    networks:
+      default:
+      starorbit-ingress:
+        aliases: [starorbit-backend]
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -33,3 +37,7 @@ services:
       retries: 20
 volumes:
   data:
+networks:
+  starorbit-ingress:
+    external: true
+    name: starorbit_ingress

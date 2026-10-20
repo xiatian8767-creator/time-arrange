@@ -1,0 +1,4 @@
+# Compatibility file for existing Fuguang deployment commands.
+# Shared TLS ingress is configured by TIM compose.v2.ip-test.yaml.
+# Do not attach ingress to either application's private default network.
+services: {}

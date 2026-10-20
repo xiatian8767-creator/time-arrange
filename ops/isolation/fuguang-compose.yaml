@@ -1,0 +1,31 @@
+name: fuguang
+services:
+  api:
+    build: ./backend
+    image: fuguang-api:2.1.0
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - fuguang-data:/data
+      - ./downloads:/app/static/site/downloads:ro
+    ports:
+      - "127.0.0.1:18081:8000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    networks:
+      default:
+      fuguang-ingress:
+        aliases: [fuguang-backend]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  fuguang-data:
+networks:
+  fuguang-ingress:
+    external: true
+    name: fuguang_ingress
