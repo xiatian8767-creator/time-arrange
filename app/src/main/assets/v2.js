@@ -15,7 +15,7 @@
   function persist(){write('cloud',cloud);}
   function lockAccount(locked){window.authLocked=locked;document.body.classList.toggle('auth-required',locked);for(const node of document.querySelectorAll('main,.bottom-nav,#ai-fab'))node.inert=locked;}
   window.onlineResult=(id,status,body,json)=>{const pending=requests.get(id);if(!pending)return;requests.delete(id);clearTimeout(pending.timer);let data;try{data=json?JSON.parse(body):{detail:body};}catch(e){data={detail:'服务器返回格式不正确'};}if(status>=200&&status<300)pending.resolve(data);else{const error=Error(typeof data.detail==='string'?data.detail:'请求失败（'+status+'）');error.status=status;pending.reject(error);}};
-  function transport(req){if(!native)return Promise.reject(Error('联网和 AI 功能请在安卓安装包中使用；浏览器仅提供离线预览'));return new Promise((resolve,reject)=>{const id=uid(),timer=setTimeout(()=>{requests.delete(id);reject(Error('请求超时，请重试'));},105000);requests.set(id,{resolve,reject,timer});Online.request(id,JSON.stringify(req));});}
+  function transport(req){if(!native)return Promise.reject(Error('联网和 AI 功能请在安卓安装包中使用；浏览器仅提供离线预览'));return new Promise((resolve,reject)=>{const id=uid(),timer=setTimeout(()=>{requests.delete(id);reject(Error('请求超时，请重试'));},req.path==='/api/v1/ai/chat'?325000:105000);requests.set(id,{resolve,reject,timer});Online.request(id,JSON.stringify(req));});}
   let refreshing=null;
   async function api(path,method='GET',body,retry=true){
     const generation=epoch;
@@ -36,7 +36,7 @@
     if(native){if(!Online.activate(target,raw,JSON.stringify(nextCloud)))throw Error('账号切换保存失败');}
     else{localStorage.setItem('star-document-'+scope,rawState());localStorage.setItem('star-partner-'+scope,localStorage.getItem('star-partner')||'');localStorage.setItem('star-v2-scope',target);localStorage.setItem('star-schedule',raw);localStorage.setItem('star-partner',localStorage.getItem('star-partner-'+target)||'');write('cloud',nextCloud);}
     epoch++;cloud=nextCloud;scope=target;state=clean;partner=localPartner();onlineMate=false;partnerInfo=null;viewPartner=false;render();
-    history=[];photo=[];$('ai-messages').replaceChildren();$('ai-photo-preview').hidden=true;$('ai-photo').removeAttribute('src');
+    dialogue.clear();photo=[];$('ai-messages').replaceChildren();$('ai-photo-preview').hidden=true;$('ai-photo').removeAttribute('src');
   }
   function setDocument(document){applying=true;try{save(document);}finally{applying=false;}}
   function summary(doc){return doc?doc.courses.length+' 门课程 / '+doc.slots.length+' 个时间段 / '+doc.todos.length+' 项待办':'云端尚无数据';}
@@ -144,7 +144,7 @@
   };
 
   // Conversation stays in memory; the server owns model credentials and billing.
-  let history=[],photo=[],aiBusy=false;
+  const dialogue=new StarAI.Conversation();let photo=[],aiBusy=false;
   async function aiSettings(){
     const generation=epoch;showModal('星小助','<p class="hint" id="assistant-account">正在读取星币信息…</p>');
     try{const info=await api('/ai/status');if(generation!==epoch||!$('assistant-account'))return;
@@ -163,7 +163,7 @@
   window.receiveAIPhoto=async data=>{if(photo.length>=10)return notify('最多上传十张照片');if(photoLoading)return notify('正在处理照片，请稍候');photoLoading=true;try{if(data.length>250000){const img=new Image();img.src=data;await img.decode();const canvas=document.createElement('canvas'),scale=Math.min(1,1280/Math.max(img.width,img.height));canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);for(let q=.85;q>=.25;q-=.1){data=canvas.toDataURL('image/jpeg',q);if(data.length<=250000)break;}if(data.length>250000)throw Error('照片过大，请裁剪后重试');}photo.push(data);renderPhotos();}catch(e){notify(e.message||'照片处理失败');}finally{photoLoading=false;}};
   $('ai-upload').onclick=()=>native?Online.pickPhoto(false):notify('请在安卓应用中选择照片');$('ai-camera').onclick=()=>native?Online.pickPhoto(true):notify('请在安卓应用中拍照');
   $('ai-photo-remove').onclick=()=>{photo=[];renderPhotos();};
-  $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');history=[];$('ai-messages').replaceChildren();$('ai-photo-remove').click();$('ai-welcome').hidden=false;};
+  $('ai-clear').onclick=()=>{if(aiBusy)return notify('请等待当前请求完成');dialogue.clear();$('ai-messages').replaceChildren();$('ai-photo-remove').click();$('ai-welcome').hidden=false;};
   function readable(value,slots){
     if(!value)return '无';
     if(value.slots)return '作息：'+value.slots.map(s=>(s.label||s.id)+' '+s.start+'–'+s.end).join('；')+'\n课程：\n'+(value.courses.map(c=>readable(c,value.slots)).join('\n')||'空白课表');
@@ -173,7 +173,7 @@
   }
   function preview(result,base,generation){
     showModal('确认 AI 修改','<p class="hint">'+esc(result.message)+'</p>'+(result.warnings.length?'<p class="danger-note">请核对不确定信息：<br>'+result.warnings.map(esc).join('<br>')+'</p>':'')+result.changes.map(change=>'<div class="diff-card"><strong>'+esc(change.type)+'</strong><p class="hint">修改前</p><pre>'+esc(readable(change.before,JSON.parse(base).slots))+'</pre><p class="hint">修改后</p><pre>'+esc(readable(change.after,result.next.slots))+'</pre></div>').join('')+'<p class="hint">确认后写入“我的课表 / 私人待办”，已登录时也会同步。不会修改搭子的课表。</p><div class="cloud-actions"><button id="ai-cancel" class="secondary">取消</button><button id="ai-apply" class="primary">确认全部修改</button></div>');
-    $('ai-cancel').onclick=closeModal;$('ai-apply').onclick=()=>{try{if(generation!==epoch||rawState()!==base)throw Error('数据或账号已变化，这份建议已失效，请重新生成');save(result.next);closeModal();message('你已确认，修改已保存。');notify('AI 修改已应用');if(result.next.todos.some(t=>t.alarmEnabled&&!t.completed)&&window.requestTodoPermissions)window.requestTodoPermissions(true);}catch(e){notify(e.message);}};
+    $('ai-cancel').onclick=closeModal;$('ai-apply').onclick=()=>{try{if(generation!==epoch||rawState()!==base)throw Error('数据或账号已变化，这份建议已失效，请重新生成');save(result.next);dialogue.confirmed();closeModal();message('你已确认，修改已保存。');notify('AI 修改已应用');if(result.next.todos.some(t=>t.alarmEnabled&&!t.completed)&&window.requestTodoPermissions)window.requestTodoPermissions(true);}catch(e){notify(e.message);}};
   }
   $('ai-form').onsubmit=async e=>{
     e.preventDefault();if(aiBusy)return;
@@ -188,16 +188,17 @@
     const receipt=response=>{if(response.billing&&generation===epoch&&!billedIds.has(response.billing.requestId)){billedIds.add(response.billing.requestId);billed+=response.billing.coins;window.dispatchEvent(new Event('star-wallet-updated'));}};
     const displayCost=()=>{if(billed){let footer=waiting.querySelector('.ai-billing');if(!footer){footer=document.createElement('small');footer.className='ai-billing';waiting.append(footer);}footer.textContent='本次消耗 '+billed+' 星币';}waiting.scrollIntoView({block:'end'});};
     try{
-      // Conversation contains only user prompts / answers, not prior private contexts or images.
+      // Keep the current unfinished image task and full structured replies in client memory.
       const contract='补充协议：权限为 '+JSON.stringify(permissions)+'。未授权的类型不得生成操作，请在 message 中提示勾选对应权限。create 不需要 id，由客户端生成；update/delete 的 id 必须来自上下文已有记录。待办 dueAt 优先使用带时区的 ISO 8601 日期时间，例如 2026-10-04T09:00:00+08:00，禁止秒时间戳。用户未指定具体时刻时先询问，不生成待办。缺省 priority=normal、completed=false、remind=false、note=""，只有明确要求提醒才设置 remind=true。操作示例：{"message":"请预览确认","warnings":[],"operations":[{"type":"todo.create","value":{"title":"喝一杯牛奶","dueAt":"2026-10-04T09:00:00+08:00"}}]}。示例时间仅展示格式，实际日期根据当前时间和用户要求计算。';
       const scheduleContract='当前客户端支持修改作息，不要沿用历史回复中的不支持结论。仅调整作息请使用 {"type":"slots.replace","slots":[完整时间段]}，保留已有课程引用的 id；按图片导入新作息与课程用 {"type":"schedule.replace","slots":[完整时间段],"courses":[完整课程]}。整表替换必须保留用户未要求删除的现有课程并适配新节次；不能确定映射就询问。也可先 slots.replace 再逐条 course.create；新增课程 id 可省略，color/room/note 可省略。示例：{"type":"schedule.replace","slots":[{"id":"s1","start":"08:00","end":"08:45"}],"courses":[{"day":1,"start":"s1","end":"s1","name":"数学"}]}。图片任务应同时识别节次时间和课程，不能因为现有作息缺少节次就拒绝。校验错误应修正字段和操作，不要声称客户端没有明确列出的能力。';
-      const messages=[{role:'system',content:system+'\n'+contract+'\n'+scheduleContract},...history.slice(-8),{role:'user',content}];
+      const taskContract='执行衔接：历史中的图片和结构化建议属于当前连续任务。用户补充时间或标题时，应合并前面已提供的信息；信息齐全就直接返回 operations，让客户端提供预览确认，不要再要求用户先口头确认才给操作。只有确实缺少的信息才询问，不要反复索取已有信息。'+dialogue.note;
+      const messages=[{role:'system',content:system+'\n'+contract+'\n'+scheduleContract+'\n'+taskContract},...dialogue.messages(content),{role:'user',content}];
       let previousRequestId='';
-      const requestAI=async()=>{const requestId=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join(''),body={requestId,messages,...(previousRequestId?{continuationOf:previousRequestId}:{})};try{const response=await api('/ai/chat','POST',body);previousRequestId=requestId;receipt(response);return response;}catch(error){if(!error.status||[502,504].includes(error.status)){try{const response=await api('/ai/requests/'+requestId);previousRequestId=requestId;receipt(response);return response;}catch(recovery){if(recovery.status===409){error.message='回复仍在处理中，请点击查询；不会重复扣费';error.pendingId=requestId;}}}throw error;}};
+      const requestAI=async()=>{const requestId=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join(''),body={requestId,messages,conversationId:dialogue.id,...(previousRequestId?{continuationOf:previousRequestId}:{})};try{const response=await api('/ai/chat','POST',body);previousRequestId=requestId;receipt(response);return response;}catch(error){if(!error.status||[502,504].includes(error.status)){try{const response=await api('/ai/requests/'+requestId);previousRequestId=requestId;receipt(response);return response;}catch(recovery){if(recovery.status===409){error.message='回复仍在处理中，请点击查询；不会重复扣费';error.pendingId=requestId;}}}throw error;}};
       let response=await requestAI();
       if(generation!==epoch)throw Error('账号已切换，已丢弃此回复');
       const choice=response.choices&&response.choices[0];if(!choice||choice.finish_reason==='length')throw Error('回复不完整，请缩小任务后重试');
-      let result;
+      let result,answerContent=choice.message.content;
       try{result=StarAI.proposal(JSON.parse(base),StarAI.parse(choice.message.content),permissions);}
       catch(validationError){
         if(validationError.message.includes('勾选')||validationError.message.includes('未授权'))throw validationError;
@@ -207,11 +208,11 @@
         if(generation!==epoch)throw Error('账号已切换，已丢弃此回复');
         const corrected=response.choices&&response.choices[0];
         if(!corrected||corrected.finish_reason==='length')throw Error('回复不完整，请缩小任务后重试');
-        result=StarAI.proposal(JSON.parse(base),StarAI.parse(corrected.message.content),permissions);
+        result=StarAI.proposal(JSON.parse(base),StarAI.parse(corrected.message.content),permissions);answerContent=corrected.message.content;
       }
-      waiting.textContent=result.message;history.push({role:'user',content:prompt},{role:'assistant',content:result.message});history=history.slice(-8);
+      waiting.textContent=result.message;dialogue.remember(content,answerContent);
       if(result.changes.length){const button=document.createElement('button');button.className='primary';button.textContent='预览 '+result.changes.length+' 项修改';button.onclick=()=>preview(result,base,generation);waiting.appendChild(button);}
-    }catch(err){waiting.textContent='未修改任何数据：'+err.message;if(err.pendingId){const button=document.createElement('button');button.type='button';button.className='ai-recover';button.textContent='查询原回复';button.onclick=async()=>{button.disabled=true;try{const response=await api('/ai/requests/'+err.pendingId);if(generation!==epoch)throw Error('账号已切换');receipt(response);const result=StarAI.proposal(JSON.parse(base),StarAI.parse(response.choices[0].message.content),permissions);waiting.textContent=result.message;history.push({role:'user',content:prompt},{role:'assistant',content:result.message});history=history.slice(-8);if(result.changes.length){const previewButton=document.createElement('button');previewButton.className='primary';previewButton.textContent='预览 '+result.changes.length+' 项修改';previewButton.onclick=()=>preview(result,base,generation);waiting.append(previewButton);}}catch(e){notify(e.message);}finally{button.disabled=false;displayCost();}};waiting.append(button);}}finally{displayCost();aiBusy=false;$('ai-send').disabled=false;}
+    }catch(err){waiting.textContent='未修改任何数据：'+err.message;if(err.pendingId){const button=document.createElement('button');button.type='button';button.className='ai-recover';button.textContent='查询原回复';button.onclick=async()=>{button.disabled=true;try{const response=await api('/ai/requests/'+err.pendingId);if(generation!==epoch)throw Error('账号已切换');receipt(response);const result=StarAI.proposal(JSON.parse(base),StarAI.parse(response.choices[0].message.content),permissions);waiting.textContent=result.message;dialogue.remember(content,response.choices[0].message.content);if(result.changes.length){const previewButton=document.createElement('button');previewButton.className='primary';previewButton.textContent='预览 '+result.changes.length+' 项修改';previewButton.onclick=()=>preview(result,base,generation);waiting.append(previewButton);}}catch(e){notify(e.message);}finally{button.disabled=false;displayCost();}};waiting.append(button);}}finally{displayCost();aiBusy=false;$('ai-send').disabled=false;}
   };
   const fab=$('ai-fab');let drag=null,suppress=false;
   function place(x,y){fab.style.left=Math.max(8,Math.min(innerWidth-60,x))+'px';fab.style.top=Math.max(8,Math.min(innerHeight-70,y))+'px';fab.style.right='auto';fab.style.bottom='auto';}

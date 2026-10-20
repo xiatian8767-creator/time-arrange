@@ -129,3 +129,51 @@ def test_adapter_fields_fixed_official_urls_and_cached_usage():
     assert a.provider_url('qwen','intl')=='https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'
     with pytest.raises(ValueError):a.provider_url('other','cn')
     assert a.price({'prompt_tokens':1000,'completion_tokens':100,'cached_tokens':200},a.Rules(),'peak')[0]==2
+
+def test_relay_preserves_raw_reply_and_client_messages(client,monkeypatch):
+    c=client;uid,h=account(c);csrf=admin(c);add(c,csrf,'relay');enabled(c,csrf)
+    messages=[{'role':'system','content':'client-owned protocol'},{'role':'user','content':'please plan'}]
+    raw='```json\n{"message":"客户端校验此建议","operations":[{"type":"client.future.operation"}]}\n```'
+    def fake(key,settings,actual):
+        assert actual==messages
+        d=response();d['choices'][0]['message']['content']=raw;return d
+    monkeypatch.setattr(a,'provider_call',fake)
+    r=c.post('/api/v1/ai/chat',headers=h,json=payload(messages=messages))
+    assert r.status_code==200 and r.json()['choices'][0]['message']['content']==raw
+    with Session(m.engine) as s:assert s.get(m.User,uid).revision==0
+
+def test_large_output_configuration_and_sticky_conversation(client,monkeypatch):
+    c=client;uid,h=account(c);csrf=admin(c);add(c,csrf,'one');add(c,csrf,'two','qwen',model='qwen3.8-flash');enabled(c,csrf)
+    r=c.post('/admin/api/assistant/rules',headers=csrf,json={'enabled':True,'period':'peak','maxTokens':131072});assert r.status_code==200
+    assert c.post('/admin/api/assistant/rules',headers=csrf,json={'maxTokens':131073}).status_code==422
+    used=[]
+    def fake(key,settings,messages):
+        used.append(key);assert settings.maxTokens==131072
+        return response()
+    monkeypatch.setattr(a,'provider_call',fake);conversation=secrets.token_hex(16)
+    for _ in range(2):assert c.post('/api/v1/ai/chat',headers=h,json=payload(conversationId=conversation)).status_code==200
+    assert used[0]==used[1]
+    with Session(m.engine) as s:
+        row=s.scalar(select(a.Endpoint).where(a.Endpoint.secret!='').order_by(a.Endpoint.id))
+        selected=next(r for r in s.scalars(select(a.Endpoint)) if a.cipher().decrypt(r.secret.encode()).decode()==used[0])
+        selected.enabled=False;s.commit()
+    assert c.post('/api/v1/ai/chat',headers=h,json=payload(conversationId=conversation)).status_code==200
+    assert used[-1]!=used[0]
+    assert a.model_output_limit('qwen3-vl-plus')==32768
+    assert a.model_output_limit('qwen3.7-plus')==65536
+
+def test_ten_image_context_and_long_text_stay_valid():
+    messages=[{'role':'system','content':'x'*150000},{'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/png;base64,YQ=='}}]*10},{'role':'assistant','content':'{"message":"补充时间","operations":[]}'},{'role':'user','content':'明天中午12点'}]
+    a.validate_messages(messages)
+
+def test_hundred_thousand_output_can_settle_when_budget_allows(client,monkeypatch):
+    c=client;uid,h=account(c,coins=1000);csrf=admin(c);setup(c,csrf,maxTokens=131072,maxCharge=1000)
+    raw=json.dumps({'message':'x'*131072,'operations':[]})
+    def fake(key,settings,messages):
+        assert settings.maxTokens==131072
+        out=response(out=131072);out['choices'][0]['message']['content']=raw;return out
+    monkeypatch.setattr(a,'provider_call',fake)
+    r=c.post('/api/v1/ai/chat',headers=h,json=payload());assert r.status_code==200,r.text
+    assert r.json()['choices'][0]['message']['content']==raw
+    expected=a.price(response(out=131072)['usage'],a.Rules(),'peak')[0]
+    assert r.json()['billing']['coins']==expected and balance(c,h)==1000-expected

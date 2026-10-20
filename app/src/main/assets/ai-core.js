@@ -54,5 +54,22 @@
     if(typeof text!=='string'||text.length>1024*1024)throw Error('AI 回复过大或为空');
     return JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
   }
-  const api={proposal,parse};root.StarAI=api;if(typeof module!=='undefined')module.exports=api;
+  function textOnly(content){return Array.isArray(content)?content.filter(p=>p.type==='text').map(p=>p.text).join('\n')+'\n[此前图片已省略；以已识别内容和当前用户要求为准]':content;}
+  class Conversation{
+    constructor(){this.clear();}
+    clear(){this.turns=[];this.anchor=null;this.note='';this.id=Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');}
+    remember(content,answer){
+      const turn={user:{role:'user',content},assistant:{role:'assistant',content:answer}};
+      if(Array.isArray(content)&&content.some(p=>p.type==='image_url'))this.anchor=turn;
+      this.turns.push(turn);this.turns=this.turns.slice(-4);
+    }
+    messages(content){
+      const hasImages=Array.isArray(content)&&content.some(p=>p.type==='image_url');
+      const imageOwner=hasImages?content:this.anchor?.user.content;
+      const turns=this.anchor&&!this.turns.includes(this.anchor)&&!hasImages?[this.anchor,...this.turns]:this.turns;
+      return turns.flatMap(t=>[t.user,t.assistant]).map(m=>({role:m.role,content:Array.isArray(m.content)&&m.content!==imageOwner?textOnly(m.content):m.content}));
+    }
+    confirmed(){this.anchor=null;for(const t of this.turns)t.user.content=textOnly(t.user.content);this.note='之前预览的修改已由用户确认并保存。当前课表和待办是保存后的最新数据，未被再次要求时不要重复创建。';}
+  }
+  const api={proposal,parse,Conversation};root.StarAI=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

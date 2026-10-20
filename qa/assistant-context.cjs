@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const {Conversation}=require('../app/src/main/assets/ai-core.js');
+const images=(text,n=1)=>[{type:'text',text},...Array.from({length:n},()=>({type:'image_url',image_url:{url:'data:image/png;base64,YQ=='}}))];
+const count=msgs=>msgs.reduce((n,m)=>n+(Array.isArray(m.content)?m.content.filter(p=>p.type==='image_url').length:0),0);
+const c=new Conversation(),photo=images('请识别活动并添加待办',10),reply=JSON.stringify({message:'已识别到报名活动，请补充截止时间',warnings:[],operations:[]});
+c.remember(photo,reply);
+let msgs=c.messages('明天中午12点');assert.equal(count(msgs),10);assert.equal(msgs[1].content,reply);
+assert.equal(msgs[0].content,photo);const id=c.id;
+for(let i=0;i<6;i++)c.remember('补充信息'+i,JSON.stringify({message:'补充结果'+i,operations:[]}));
+msgs=c.messages('现在生成建议');assert.equal(count(msgs),10);assert(msgs.length<=10);assert.equal(msgs[1].content,reply);assert.equal(c.id,id);
+msgs=c.messages(images('识别新课表',10));assert.equal(count(msgs),0,'new photos own the image budget');
+c.remember(images('新课表',2),'new-reply');assert.equal(count(c.messages('补充')),2);
+c.confirmed();assert.equal(count(c.messages('继续')),0);assert(c.note.includes('确认并保存'));
+c.clear();assert.equal(c.messages('你好').length,0);assert.notEqual(c.id,id);assert.equal(c.note,'');
+console.log('PASS: ten-photo follow-up, raw structured history, pinned unfinished task beyond four turns, bounded image budget, confirmed/cleared task isolation');

@@ -1,6 +1,6 @@
 services:
   api:
-    image: xingke-v2-api:3.4beta.1-pool
+    image: xingke-v2-api:3.4beta.2
     volumes:
       - /opt/xingke-v2/ai-secrets/key:/run/secrets/starorbit-ai-key:ro
   public-admin-proxy:

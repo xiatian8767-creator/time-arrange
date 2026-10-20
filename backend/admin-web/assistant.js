@@ -27,7 +27,7 @@ async function loadApis(){
 }
 function edit(row){
  editing=row?.id||null;$('api-form').reset();$('editor-error').textContent='';$('editor-title').textContent=editing?'编辑 API':'新增 API';
- $('api-name').value=row?.name||'';$('api-provider').value=row?.provider||'deepseek';$('api-region').value=row?.region||'cn';$('api-model').value=row?.model||'deepseek-flash';$('api-timeout').value=row?.timeoutSeconds||30;
+ $('api-name').value=row?.name||'';$('api-provider').value=row?.provider||'deepseek';$('api-region').value=row?.region||'cn';$('api-model').value=row?.model||'deepseek-flash';$('api-timeout').value=row?.timeoutSeconds||180;
  $('api-enabled').checked=row?row.enabled:true;$('api-vision').checked=row?row.supportsImages:true;$('api-key').value='';$('api-key').required=!editing;$('region-label').hidden=$('api-provider').value!=='qwen';$('api-editor').showModal();
 }
 $('add-api').onclick=()=>edit(null);$('close-editor').onclick=$('cancel-editor').onclick=()=>$('api-editor').close();

@@ -110,7 +110,7 @@ public final class OnlineBridge {
                 if(!ai&&connection.getURL().getHost().equals("8.154.43.154")&&connection.getURL().getPort()==-1){
                     connection.setSSLSocketFactory(betaSocketFactory());
                 }
-                connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(endpoint.endsWith("/api/v1/ai/chat")?100000:20000);
+                connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(endpoint.endsWith("/api/v1/ai/chat")?320000:20000);
                 connection.setRequestMethod(method);connection.setRequestProperty("Accept","application/json");
                 if(!auth.isEmpty())connection.setRequestProperty("Authorization","Bearer "+auth);
                 if(req.has("body")){
@@ -123,7 +123,7 @@ public final class OnlineBridge {
                 InputStream input=status>=400?connection.getErrorStream():connection.getInputStream();
                 String body="{}";
                 if(input!=null)try(InputStream in=input;ByteArrayOutputStream bytes=new ByteArrayOutputStream()){
-                    byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){bytes.write(buffer,0,n);if(bytes.size()>2*1024*1024)throw new Exception("响应过大");}
+                    byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){bytes.write(buffer,0,n);if(bytes.size()>8*1024*1024)throw new Exception("响应过大");}
                     body=new String(bytes.toByteArray(),StandardCharsets.UTF_8);
                 }
                 reply(id,status,body,true);

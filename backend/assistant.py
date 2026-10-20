@@ -28,7 +28,7 @@ from .stars import Action, Wallet, Transaction, lock_users, wallet, ident, now
 router = APIRouter()
 slots = threading.BoundedSemaphore(3)
 TZ = ZoneInfo('Asia/Shanghai')
-STALE_MS = 180000
+STALE_MS = 600000
 rotation_lock=threading.Lock()
 rotation=0
 
@@ -53,7 +53,7 @@ class Rules(Strict):
     period: str = Field(default='auto',pattern=r'^(auto|peak|off)$')
     calendarYear: int = Field(default=2026,ge=2026,le=2100)
     holidays: list[str] = Field(default_factory=holiday_defaults,max_length=150)
-    maxTokens: int = Field(default=8192,ge=256,le=8192)
+    maxTokens: int = Field(default=131072,ge=256,le=131072)
     maxCharge: int = Field(default=100,ge=1,le=1000)
 
     @model_validator(mode='after')
@@ -125,7 +125,7 @@ class EndpointInput(Strict):
     apiKey: str = Field(default='',max_length=500)
     enabled: bool = True
     supportsImages: bool = True
-    timeoutSeconds: int = Field(default=30,ge=5,le=60)
+    timeoutSeconds: int = Field(default=180,ge=5,le=300)
 
     @model_validator(mode='after')
     def check(self):
@@ -153,6 +153,7 @@ class Call(m.Base):
 class Chat(Action):
     messages: list[dict] = Field(min_length=1,max_length=14)
     continuationOf: str = Field(default='',max_length=64,pattern=r'^[A-Za-z0-9_-]*$')
+    conversationId: str = Field(default='',max_length=32,pattern=r'^(?:[a-f0-9]{32})?$')
 
 def cipher():
     try: return Fernet(Path(os.environ.get('AI_KEY_FILE','/run/secrets/starorbit-ai-key')).read_bytes().strip())
@@ -238,7 +239,7 @@ def validate_messages(messages):
                     images+=1
                 else:raise HTTPException(422,'对话内容无效')
         else:raise HTTPException(422,'对话内容无效')
-    if images>10 or size>100000:raise HTTPException(422,'最多十张图片，或请缩短对话内容')
+    if images>10 or size>1024*1024:raise HTTPException(422,'最多十张图片，或请缩短对话内容')
     if messages[-1].get('role')!='user':raise HTTPException(422,'请发送用户消息')
 
 def provider_payload(rules,messages):
@@ -260,8 +261,8 @@ def provider_call(key,rules,messages):
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self,*args,**kwargs):return None
     with urllib.request.build_opener(NoRedirect).open(request,timeout=rules.timeout) as response:
-        body=response.read(1024*1024+1)
-        if len(body)>1024*1024:raise ValueError('回复过大')
+        body=response.read(4*1024*1024+1)
+        if len(body)>4*1024*1024:raise ValueError('回复过大')
         return json.loads(body)
 
 class ProviderFailure(Exception):
@@ -284,7 +285,7 @@ def failure(error):
         return ProviderFailure(0,'服务商网络或连接超时')
     return ProviderFailure(200,'回复格式或用量异常')
 
-def candidate_keys(messages):
+def candidate_keys(messages,affinity=''):
     global rotation
     images=any(isinstance(msg.get('content'),list) and any(part.get('type')=='image_url' for part in msg['content']) for msg in messages)
     with Session(m.engine) as session:
@@ -293,6 +294,7 @@ def candidate_keys(messages):
         rows=session.scalars(query.order_by(Endpoint.created_at,Endpoint.id)).all()
         data=[{'id':r.id,'name':r.name,'provider':r.provider,'region':r.region,'model':r.model,'secret':r.secret,'revision':r.revision,'timeout':r.timeout} for r in rows]
     if not data:raise ProviderFailure(503,'暂无可用的图片识别API' if images else '暂无可用的API')
+    if affinity:return sorted(data,key=lambda k:hashlib.sha256((affinity+':'+k['id']).encode()).digest(),reverse=True)
     with rotation_lock:
         start=rotation%len(data);rotation+=1
     return data[start:]+data[:start]
@@ -309,8 +311,13 @@ def attempt_result(call_id,key,started,sequence,success,error=None):
         session.add(Attempt(id=ident(),call_id=call_id,key_id=key['id'],name=key['name'],provider=key['provider'],model=key['model'],created_at=started,sequence=sequence,elapsed_ms=max(0,now()-started),success=success,status=200 if success else error.status,error='' if success else error.label))
         session.commit()
 
-def routed_call(call_id,rules,messages,period):
-    candidates=candidate_keys(messages);deadline=time.monotonic()+65
+def model_output_limit(model):
+    if model.startswith('deepseek-') or model.startswith('qwen3.8-'):return 131072
+    if model.startswith(('qwen3.7-','qwen3.6-','qwen3.5-')):return 65536
+    return 32768
+
+def routed_call(call_id,rules,messages,period,affinity=''):
+    candidates=candidate_keys(messages,affinity);deadline=time.monotonic()+300
     for sequence,key in enumerate(candidates,1):
         remaining=deadline-time.monotonic()
         if remaining<1:break
@@ -318,13 +325,12 @@ def routed_call(call_id,rules,messages,period):
         try:
             try:secret=cipher().decrypt(key['secret'].encode()).decode()
             except Exception:raise ProviderFailure(0,'Key无法解密，请重新填写',cooldown=900)
-            settings=SimpleNamespace(provider=key['provider'],region=key['region'],model=key['model'],maxTokens=rules.maxTokens,timeout=max(1,min(key['timeout'],remaining)))
+            settings=SimpleNamespace(provider=key['provider'],region=key['region'],model=key['model'],maxTokens=min(rules.maxTokens,model_output_limit(key['model'])),timeout=max(1,min(key['timeout'],remaining)))
             response=provider_call(secret,settings,messages)
             choice=response['choices'][0]
             if choice.get('finish_reason')=='content_filter':raise ProviderFailure(200,'内容未通过服务商审核',retry=False,cooldown=0)
             if choice.get('finish_reason')!='stop':raise ValueError('incomplete')
-            proposal=json.loads(choice['message']['content'])
-            if not isinstance(proposal,dict) or not isinstance(proposal.get('message'),str) or not isinstance(proposal.get('operations',[]),list):raise ValueError('invalid format')
+            if not isinstance(choice['message']['content'],str):raise ValueError('invalid response')
             price(response.get('usage',{}),rules,period)
         except Exception as error:
             problem=failure(error);attempt_result(call_id,key,started,sequence,False,problem)
@@ -385,11 +391,11 @@ def chat(data:Chat,token=Depends(m.authenticated),session:Session=Depends(m.db))
         session.add(Call(id=call_id,user_id=token.user_id,fingerprint=fingerprint,parent_id=parent_id,state='pending',reserved=hold,created_at=now(),pricing={**rules.model_dump(),'periodUsed':period}))
         session.commit();reserved=True
         try:
-            response,selected=routed_call(call_id,rules,data.messages,period)
+            affinity=token.user_id+':'+data.conversationId if data.conversationId else ''
+            response,selected=routed_call(call_id,rules,data.messages,period,affinity)
             choice=response['choices'][0]
             if choice.get('finish_reason') not in ('stop',):raise ValueError('回复未完成')
-            proposal=json.loads(choice['message']['content'])
-            if not isinstance(proposal,dict) or not isinstance(proposal.get('message'),str) or not isinstance(proposal.get('operations',[]),list):raise ValueError('回复格式无效')
+            # Operation parsing, validation and confirmation belong to the client.
             charge,usage=price(response.get('usage',{}),rules,period)
             usage.update(selected)
             if parent_id:

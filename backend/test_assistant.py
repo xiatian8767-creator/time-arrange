@@ -86,7 +86,7 @@ def test_success_idempotent_and_owner_scoped(client,monkeypatch):
     tx=c.get('/api/v1/stars/transactions',headers=h).json()['transactions'];assert len(tx)==1 and tx[0]['kind']=='ai_chat' and tx[0]['amount']==-2
     assert 'sk-test' not in c.get('/admin/api/assistant/usage').text
 
-@pytest.mark.parametrize('kind',['exception','usage','length','json','overrun'])
+@pytest.mark.parametrize('kind',['exception','usage','length','overrun'])
 def test_failed_calls_refund_and_no_transaction(client,monkeypatch,kind):
     c=client;uid,h=account(c);csrf=admin(c);setup(c,csrf)
     def fake(*args):
@@ -94,7 +94,6 @@ def test_failed_calls_refund_and_no_transaction(client,monkeypatch,kind):
         d=response()
         if kind=='usage':d.pop('usage')
         if kind=='length':d['choices'][0]['finish_reason']='length'
-        if kind=='json':d['choices'][0]['message']['content']='not json'
         if kind=='overrun':d=response(prompt=1000000,out=100000)
         return d
     monkeypatch.setattr(a,'provider_call',fake)

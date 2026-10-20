@@ -65,6 +65,10 @@ def test_release_page():
 def assistant_release_page():
     return FileResponse(Path(__file__).parent/'updates'/'3.4beta.1.html',headers={'Cache-Control':'no-cache','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"})
 
+@router.get('/updates/3.4beta.2/',include_in_schema=False)
+def assistant_context_release_page():
+    return FileResponse(Path(__file__).parent/'updates'/'3.4beta.2.html',headers={'Cache-Control':'no-cache','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"})
+
 @router.get('/updates/2.1beta/', include_in_schema=False)
 @router.get('/updates/3.2beta.1/', include_in_schema=False)
 @router.get('/updates/3.2beta.2/', include_in_schema=False)
