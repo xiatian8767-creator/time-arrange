@@ -20,16 +20,17 @@ $source=Join-Path $PSScriptRoot 'app\src\main'
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 $classes=Join-Path $out 'classes'
 $dex=Join-Path $out 'dex'
-New-Item -ItemType Directory -Force -Path $out,$classes,$dex | Out-Null
+$generated=Join-Path $out 'generated'
+New-Item -ItemType Directory -Force -Path $out,$classes,$dex,$generated | Out-Null
 $res=Join-Path $out 'resources.zip'
 $unsigned=Join-Path $out 'unsigned.apk'
 $aligned=Join-Path $out 'aligned.apk'
-$apk=Join-Path $out $(if($DebugBuild){'StarOrbit-3.4beta.2-debug.apk'}else{'StarOrbit-3.4beta.2.apk'})
+$apk=Join-Path $out $(if($DebugBuild){'StarOrbit-3.4beta.3-debug.apk'}else{'StarOrbit-3.4beta.3.apk'})
 Run (Join-Path $BuildTools 'aapt2.exe') @('compile','--dir',(Join-Path $source 'res'),'-o',$res)
-$linkArgs=@('link','-o',$unsigned,'-I',$Platform,'--manifest',(Join-Path $source 'AndroidManifest.xml'),'-A',(Join-Path $source 'assets'),'--auto-add-overlay',$res)
+$linkArgs=@('link','-o',$unsigned,'-I',$Platform,'--manifest',(Join-Path $source 'AndroidManifest.xml'),'-A',(Join-Path $source 'assets'),'--java',$generated,'--auto-add-overlay',$res)
 if($DebugBuild){$linkArgs+='--debug-mode'}
 Run (Join-Path $BuildTools 'aapt2.exe') $linkArgs
-$javaFiles=@(Get-ChildItem (Join-Path $source 'java') -Recurse -Filter '*.java' | ForEach-Object FullName)
+$javaFiles=@(Get-ChildItem (Join-Path $source 'java'),$generated -Recurse -Filter '*.java' | ForEach-Object FullName)
 Run (Join-Path $JavaHome 'bin\javac.exe') (@('-encoding','UTF-8','--release','8','-classpath',$Platform,'-d',$classes)+$javaFiles)
 $classesJar=Join-Path $out 'classes.jar'
 Add-Type -AssemblyName System.IO.Compression.FileSystem

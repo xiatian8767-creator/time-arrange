@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.xingke.widgetqa" android:versionCode="1" android:versionName="1">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+    <application android:label="Widget QA" android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".WidgetHostActivity" android:exported="true" />
+    </application>
+    <instrumentation android:name=".WidgetChecks" android:targetPackage="cn.xingke.timetable" android:label="Offline widget checks" />
+</manifest>

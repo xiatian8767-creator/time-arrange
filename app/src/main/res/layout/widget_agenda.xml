@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@drawable/widget_background" android:padding="16dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="今日安排" android:textSize="19sp" android:textStyle="bold" android:textColor="#1c2945" android:includeFontPadding="false" />
+            <TextView android:id="@+id/widget_date" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#89929d" android:layout_marginTop="5dp" android:includeFontPadding="false" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_add" android:layout_width="38dp" android:layout_height="38dp" android:gravity="center" android:background="@drawable/widget_add" android:text="＋" android:textSize="25sp" android:textColor="#b89b5d" android:contentDescription="新增待办" android:importantForAccessibility="yes" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/widget_rows" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    <TextView android:id="@+id/widget_empty" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center" android:textColor="#89929d" android:textSize="13sp" android:lineSpacingExtra="8dp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="bottom" android:orientation="horizontal" android:paddingTop="8dp">
+        <TextView android:id="@+id/widget_more" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textSize="10sp" android:textColor="#929799" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_all" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingLeft="12dp" android:paddingTop="8dp" android:text="查看全部  ›" android:textSize="11sp" android:textColor="#78838c" />
+    </LinearLayout>
+</LinearLayout>

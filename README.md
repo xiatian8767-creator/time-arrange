@@ -2,10 +2,11 @@
 
 课表、搭子、待办与星小助。Android 客户端使用原生桥接与 WebView，服务端使用 FastAPI、PostgreSQL 和 Nginx。
 
-## 当前版本
+## 官网当前版本
 
 - 稳定版：3.3beta.4。
 - 探索版：3.4beta.2（versionCode 29）。
+- 待验收安装包：3.4beta.3（versionCode 30），新增今日安排桌面小组件和待办列表底部新增入口；官网首页暂不替换。
 - [官网](http://startimetable.xyz/) · [GitHub Releases](https://github.com/xiatian8767-creator/time-arrange/releases)
 - 历史版本、更新记录和安装包以 Git 历史、GitHub Releases 为准，不在仓库重复维护逐版本文档或源码压缩包。
 

@@ -28,6 +28,8 @@ public class MainActivity extends Activity {
     private OnlineBridge online;
     private String pendingExport;
     private boolean openTodos;
+    private String widgetAction;
+    private boolean webReady;
     private boolean permissionAlarm;private int permissionStage=-1;
     private boolean importingPartner;
     private static final int EXPORT=101, IMPORT=102;
@@ -37,6 +39,7 @@ public class MainActivity extends Activity {
         super.onCreate(saved);
         prefs=getSharedPreferences("star_schedule", MODE_PRIVATE);
         openTodos="cn.xingke.timetable.OPEN_TODOS".equals(getIntent().getAction());
+        widgetAction=widgetAction(getIntent());
         TodoReminders.channel(this);
         if(saved!=null){permissionAlarm=saved.getBoolean("permissionAlarm");permissionStage=saved.getInt("permissionStage",-1);pendingExport=saved.getString("pendingExport");importingPartner=saved.getBoolean("importingPartner");}
         FrameLayout frame=new FrameLayout(this);
@@ -58,7 +61,7 @@ public class MainActivity extends Activity {
         online=new OnlineBridge(this,web,prefs);
         web.addJavascriptInterface(online,"Online");
         web.setWebViewClient(new WebViewClient(){
-            @Override public void onPageFinished(WebView view,String url){if(openTodos){openTodos=false;view.evaluateJavascript("window.showPage && window.showPage('todos')",null);}}
+            @Override public void onPageFinished(WebView view,String url){webReady=true;if(openTodos){openTodos=false;view.evaluateJavascript("window.showPage && window.showPage('todos')",null);}if(widgetAction!=null){dispatchWidgetAction();}}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return !HOME.equals(request.getUrl().toString());}
             @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !HOME.equals(url);}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
@@ -102,7 +105,7 @@ public class MainActivity extends Activity {
             if(json==null || json.getBytes(StandardCharsets.UTF_8).length>1024*1024)return false;
             try{new JSONObject(json);}catch(Exception error){return false;}
             boolean saved=prefs.edit().putString("data",json).commit();
-            if(saved)runOnUiThread(()->{TodoReminders.reconcile(MainActivity.this,true);TodoAlarms.reconcile(MainActivity.this,false);});
+            if(saved)runOnUiThread(()->{TodoReminders.reconcile(MainActivity.this,true);TodoAlarms.reconcile(MainActivity.this,false);AgendaWidget.refresh(MainActivity.this);});
             return saved;
         }
         @JavascriptInterface public boolean notificationsEnabled(){return TodoReminders.enabled(MainActivity.this);}
@@ -201,7 +204,9 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed(){web.evaluateJavascript("window.handleBack && window.handleBack()",value->{if(!"true".equals(value))super.onBackPressed();});}
     @Override protected void onPause(){super.onPause();web.onPause();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==203){if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)advancePermissions();else permissionStage=-1;return;}if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);}
-    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();window.appEntered&&window.appEntered();",null);}}
+    private String widgetAction(Intent intent){String action=intent.getAction();return AgendaWidget.ADD.equals(action)?"add":AgendaWidget.TODOS.equals(action)?"todos":AgendaWidget.SCHEDULE.equals(action)?"schedule":AgendaWidget.ALL.equals(action)?"agenda":null;}
+    private void dispatchWidgetAction(){String action=widgetAction;widgetAction=null;web.evaluateJavascript("window.openWidgetAction&&window.openWidgetAction("+JSONObject.quote(action)+")",null);}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);widgetAction=widgetAction(intent);if(widgetAction!=null&&webReady)dispatchWidgetAction();}
+    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);AgendaWidget.refresh(this);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();window.appEntered&&window.appEntered();",null);}}
     @Override protected void onDestroy(){if(online!=null)online.destroy();if(web!=null){web.removeJavascriptInterface("Android");web.removeJavascriptInterface("Online");web.destroy();}super.onDestroy();}
 }

@@ -1,0 +1,20 @@
+const {chromium}=require('../test/qa/node_modules/playwright');
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../app/src/main/assets');
+const server=http.createServer((req,res)=>{const url=new URL(req.url,'http://localhost').pathname,file=path.join(root,url==='/'?'index.html':url);if(!fs.existsSync(file))return res.writeHead(404).end();res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':'text/html;charset=utf-8');res.end(fs.readFileSync(file));});
+(async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({channel:'msedge',headless:true});try{
+const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.addInitScript(()=>{const user={userId:'aaaaaaaaaaaa',nickname:'测试用户'},base='https://8.154.43.154',vault={cloud:{baseUrl:base,user,accessToken:'qa',refreshToken:'qa',revision:0}};
+window.Online={load:k=>JSON.stringify(vault[k]||{}),store:(k,v)=>{vault[k]=JSON.parse(v);return true;},scope:()=>base+'#'+user.userId,accountData:()=>'',request:(id,raw)=>{const r=JSON.parse(raw);let data={ok:true};if(r.path==='/api/v1/me/data')data={revision:0,document:null,security:{required:false}};if(r.path==='/api/v1/partner')data={partner:null};if(r.path.startsWith('/api/v1/campaigns'))data={campaign:null};if(r.path==='/api/v1/stars')data={user,partner:null,balance:0};setTimeout(()=>onlineResult(id,200,JSON.stringify(data),true),5);}};});
+await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>!window.authLocked);
+await page.evaluate(()=>{save({...state,todos:[{id:'widget-test',title:'提交实验报告',dueAt:Date.now()+3600000,createdAt:Date.now(),priority:'normal',note:'课程作业',completed:false,remind:false,alarmEnabled:false,alarmAt:0}]});showPage('todos');});
+assert.equal(await page.locator('.todo-card').count(),1);assert.equal(await page.locator('.todo-add-more').count(),1);assert.equal(await page.locator('.todo-empty').count(),0);
+await page.screenshot({path:'test/qa/todo-add-more.png',fullPage:true});await page.click('.todo-add-more');await page.waitForSelector('#todo-form');assert.equal(await page.locator('#todo-title').inputValue(),'');await page.evaluate(()=>closeModal());
+await page.evaluate(()=>{todoFilter='completed';renderTodos();});assert.equal(await page.locator('.todo-empty').count(),1);assert.equal(await page.locator('.todo-add-more').count(),0);await page.click('.todo-empty');await page.waitForSelector('#todo-form');await page.evaluate(()=>closeModal());
+await page.evaluate(()=>openWidgetAction('add'));await page.waitForSelector('#todo-form');assert.equal(await page.locator('#todo-title').inputValue(),'');await page.evaluate(()=>closeModal());
+await page.evaluate(()=>openWidgetAction('schedule'));assert.equal(await page.locator('#schedule-page').isVisible(),true);await page.evaluate(()=>openWidgetAction('todos'));assert.equal(await page.locator('#todo-page').isVisible(),true);
+await page.evaluate(()=>openWidgetAction('agenda'));await page.waitForSelector('#widget-agenda-list');assert.equal(await page.locator('[data-widget-todo]').count(),1);await page.locator('[data-widget-todo]').click();await page.waitForSelector('#todo-form');assert.equal(await page.locator('#todo-title').inputValue(),'提交实验报告');await page.evaluate(()=>closeModal());
+assert.equal(await page.evaluate(()=>state.todos.length),1);assert.deepEqual(errors,[]);
+const anon=await browser.newPage();await anon.goto('http://127.0.0.1:'+server.address().port);await anon.evaluate(()=>openWidgetAction('add'));await anon.waitForSelector('#login-form');assert.equal(await anon.locator('#todo-form').count(),0);
+console.log('PASS: nonempty list bottom add, empty filter no duplicate add, existing editor reuse, widget add/schedule/todo deep links and unauthenticated login gating');
+}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1});
