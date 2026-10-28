@@ -68,7 +68,7 @@ public final class TodoReminders {
         String scope=data.getString("active-scope","guest");
         SharedPreferences scopeState=context.getSharedPreferences("todo_scope",Context.MODE_PRIVATE);
         if(!scope.equals(scopeState.getString("active","guest"))){
-            context.stopService(new Intent(context,AlarmRingService.class));
+            AlarmRingService.stop(context);
             notifications.cancelAll();
             scopeState.edit().putString("active",scope).commit();
         }

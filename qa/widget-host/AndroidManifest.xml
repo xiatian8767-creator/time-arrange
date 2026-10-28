@@ -4,4 +4,5 @@
         <activity android:name=".WidgetHostActivity" android:exported="true" />
     </application>
     <instrumentation android:name=".WidgetChecks" android:targetPackage="cn.xingke.timetable" android:label="Offline widget checks" />
+    <instrumentation android:name=".AlarmChecks" android:targetPackage="cn.xingke.timetable" android:label="Offline alarm checks" />
 </manifest>

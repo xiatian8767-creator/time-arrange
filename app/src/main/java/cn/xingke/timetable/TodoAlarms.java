@@ -7,6 +7,7 @@ import java.util.*;
 
 /** Alarm state is derived from the active account's tasks, never a second task store. */
 public final class TodoAlarms {
+    static final long CATCH_UP_MS=30*60*1000L, RING_MS=10*60*1000L;
     private static SharedPreferences prefs(Context c){return c.getSharedPreferences("todo_alarm_state",0);}
     static String scope(Context c){return c.getSharedPreferences("star_schedule",0).getString("active-scope","guest");}
     private static String key(String scope,String id){try{byte[] b=java.security.MessageDigest.getInstance("SHA-256").digest((scope+"\n"+id).getBytes("UTF-8"));return android.util.Base64.encodeToString(b,10);}catch(Exception e){throw new IllegalStateException(e);}}
@@ -22,9 +23,15 @@ public final class TodoAlarms {
         SharedPreferences p=prefs(c);String current=scope(c);Map<String,JSONObject> tasks=tasks(c);
         boolean sameScope=current.equals(p.getString("scope",current));
         JSONArray old=active(c),active=new JSONArray();Set<String> activeIds=new HashSet<>();
-        for(int i=0;sameScope&&i<old.length();i++)try{JSONObject item=old.getJSONObject(i),task=tasks.get(item.getString("id"));if(task!=null&&task.getLong("alarmAt")==item.getLong("signature")){active.put(display(task,item.getLong("at")));activeIds.add(task.getString("id"));}}catch(Exception ignored){}
-        long now=System.currentTimeMillis(),next=Long.MAX_VALUE;boolean added=false;
+        long now=System.currentTimeMillis(),next=Long.MAX_VALUE;
         SharedPreferences.Editor edit=p.edit().putString("scope",current);
+        for(int i=0;sameScope&&i<old.length();i++)try{
+            JSONObject item=old.getJSONObject(i),task=tasks.get(item.getString("id"));
+            if(task==null||task.getLong("alarmAt")!=item.getLong("signature"))continue;
+            long until=item.optLong("until",now+RING_MS);
+            if(until<=now){edit.putLong("fired:"+key(current,task.getString("id")),task.getLong("alarmAt"));activeIds.add(task.getString("id"));continue;}
+            active.put(display(task,item.getLong("at")).put("until",until));activeIds.add(task.getString("id"));
+        }catch(Exception ignored){}
         Set<String> validKeys=new HashSet<>();
         for(JSONObject task:tasks.values())try{
             String id=task.getString("id"),k=key(current,id);validKeys.add(k);long signature=task.getLong("alarmAt");
@@ -33,19 +40,28 @@ public final class TodoAlarms {
             if(activeIds.contains(id))continue;
             if(snooze==0&&p.getLong("fired:"+k,0)==signature)continue;
             long at=snooze>0?snooze:signature;
-            if(at<=now&&fire){
-                edit.putLong("fired:"+k,signature).remove("sig:"+k).remove("snooze:"+k);
-                if(now-at<120000){active.put(display(task,at));added=true;}
+            if(at<=now&&now-at<CATCH_UP_MS&&fire){
+                // Persist pending delivery first. A failed service start must not consume the alarm.
+                edit.remove("sig:"+k).remove("snooze:"+k);
+                active.put(display(task,at).put("until",now+RING_MS));
             }else if(at>now)next=Math.min(next,at);
-            else if(now-at<120000)next=Math.min(next,now+1500);
-            else edit.putLong("fired:"+k,signature).remove("sig:"+k).remove("snooze:"+k);
+            else if(now-at<CATCH_UP_MS)next=Math.min(next,now+1500);
+            else {
+                // Very old alarms must not ring unexpectedly; surface them as missed reminders.
+                if(now-at<86400000)fallback(c,new JSONArray().put(display(task,at)),"错过的闹钟，请查看待办");
+                edit.putLong("fired:"+k,signature).remove("sig:"+k).remove("snooze:"+k);
+            }
         }catch(Exception ignored){}
         // Only retain delivery metadata for current active tasks; no hidden task copies.
         for(String name:p.getAll().keySet())if(name.contains(":")){String hash=name.substring(name.indexOf(':')+1);if(!validKeys.contains(hash))edit.remove(name);}
         edit.putString("active",active.toString()).commit();
-        if(active.length()==0)c.stopService(new Intent(c,AlarmRingService.class));
-        else if(added){if(TodoReminders.exact(c))AlarmRingService.ring(c);else{fallback(c,active);dismiss(c,false);}}
-        else if(!active.toString().equals(old.toString()))c.sendBroadcast(new Intent("cn.xingke.timetable.ALARM_UPDATED").setPackage(c.getPackageName()));
+        if(active.length()==0)AlarmRingService.stop(c);
+        else {
+            // A short watchdog exists only during an active alarm, never as a permanent service.
+            next=Math.min(next,now+(fire||AlarmRingService.running?60000:1500));
+            if(fire)AlarmRingService.ring(c);
+            else if(!active.toString().equals(old.toString()))c.sendBroadcast(new Intent("cn.xingke.timetable.ALARM_UPDATED").setPackage(c.getPackageName()));
+        }
         if(next<Long.MAX_VALUE)try{
             PendingIntent show=PendingIntent.getActivity(c,182,new Intent(c,MainActivity.class).setAction("cn.xingke.timetable.OPEN_TODOS"),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
             if(TodoReminders.exact(c))manager.setAlarmClock(new AlarmManager.AlarmClockInfo(next,show),pending(c));
@@ -55,14 +71,18 @@ public final class TodoAlarms {
     static synchronized void dismiss(Context c,boolean snooze){
         SharedPreferences p=prefs(c);SharedPreferences.Editor e=p.edit();String current=scope(c);Map<String,JSONObject> tasks=tasks(c);JSONArray active=active(c);
         if(current.equals(p.getString("scope",current)))for(int i=0;i<active.length();i++)try{JSONObject item=active.getJSONObject(i),task=tasks.get(item.getString("id"));if(task==null||task.getLong("alarmAt")!=item.getLong("signature"))continue;String k=key(current,task.getString("id"));e.putLong("fired:"+k,task.getLong("alarmAt"));if(snooze)e.putLong("sig:"+k,task.getLong("alarmAt")).putLong("snooze:"+k,System.currentTimeMillis()+300000);}catch(Exception ignored){}
-        e.putString("active","[]").commit();c.stopService(new Intent(c,AlarmRingService.class));reconcile(c,false);
+        e.putString("active","[]").commit();AlarmRingService.stop(c);reconcile(c,false);
     }
     static void fallback(Context c,JSONArray items){
-        if(!TodoReminders.enabled(c))return;
+        fallback(c,items,"闹钟未能启动，请打开应用检查闹钟设置");
+    }
+    static void fallback(Context c,JSONArray items,String message){
+        TodoReminders.channel(c);
+        if(items.length()==0||!TodoReminders.enabled(c))return;
         Notification.Builder b=android.os.Build.VERSION.SDK_INT>=26?new Notification.Builder(c,"todo_reminders"):new Notification.Builder(c);
         String title=items.optJSONObject(0).optString("title","待办提醒");
         PendingIntent open=PendingIntent.getActivity(c,183,new Intent(c,MainActivity.class).setAction("cn.xingke.timetable.OPEN_TODOS"),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-        b.setSmallIcon(c.getResources().getIdentifier("ic_notification","drawable",c.getPackageName())).setContentTitle(title).setContentText("待办到时间了").setContentIntent(open).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).setDefaults(Notification.DEFAULT_ALL);
-        c.getSystemService(NotificationManager.class).notify(811,b.build());
+        b.setSmallIcon(c.getResources().getIdentifier("ic_notification","drawable",c.getPackageName())).setContentTitle(title).setContentText(message).setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE).setDefaults(Notification.DEFAULT_ALL);
+        try{c.getSystemService(NotificationManager.class).notify(811,b.build());}catch(SecurityException ignored){}
     }
 }

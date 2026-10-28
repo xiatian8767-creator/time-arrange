@@ -78,6 +78,29 @@ public class MainActivity extends Activity {
         web.loadUrl(HOME);
     }
     public class LocalBridge {
+        @JavascriptInterface public String alarmStatus(){
+            try{
+                android.app.NotificationManager nm=getSystemService(android.app.NotificationManager.class);
+                android.media.AudioManager audio=getSystemService(android.media.AudioManager.class);
+                boolean channel=true;if(Build.VERSION.SDK_INT>=26){android.app.NotificationChannel ch=nm.getNotificationChannel("todo_alarm_v21");channel=ch==null||ch.getImportance()!=android.app.NotificationManager.IMPORTANCE_NONE;}
+                return new JSONObject().put("notifications",TodoReminders.enabled(MainActivity.this)).put("channel",channel).put("exact",TodoReminders.exact(MainActivity.this))
+                    .put("fullscreen",Build.VERSION.SDK_INT<34||nm.canUseFullScreenIntent())
+                    .put("battery",getSystemService(android.os.PowerManager.class).isIgnoringBatteryOptimizations(getPackageName()))
+                    .put("volume",audio.getStreamVolume(android.media.AudioManager.STREAM_ALARM)).toString();
+            }catch(Exception e){return "{}";}
+        }
+        @JavascriptInterface public void openAlarmSetting(String kind){runOnUiThread(()->{
+            try{
+                Intent i;
+                if("exact".equals(kind)&&Build.VERSION.SDK_INT>=31)i=new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName()));
+                else if("fullscreen".equals(kind)&&Build.VERSION.SDK_INT>=34)i=new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,Uri.parse("package:"+getPackageName()));
+                else if("volume".equals(kind))i=new Intent(android.provider.Settings.ACTION_SOUND_SETTINGS);
+                else if("battery".equals(kind))i=new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));
+                else if("channel".equals(kind)&&Build.VERSION.SDK_INT>=26)i=new Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID,"todo_alarm_v21");
+                else {openNotificationSettings();return;}
+                startActivity(i);
+            }catch(Exception e){notice("请在手机系统设置中检查通知、闹钟和后台运行权限");}
+        });}
         @JavascriptInterface public void requestTodoPermissions(boolean alarm){runOnUiThread(()->{permissionAlarm=alarm;permissionStage=0;advancePermissions();});}
         @JavascriptInterface public void openTodoPermissions(){runOnUiThread(()->{
             boolean full=Build.VERSION.SDK_INT<34||getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent();
@@ -135,11 +158,12 @@ public class MainActivity extends Activity {
                 }
                 if(!TodoReminders.enabled(this)){Intent i=Build.VERSION.SDK_INT>=26?new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()):new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));startActivityForResult(i,203);return;}
             }
-            if(permissionStage==1){permissionStage=2;if(!TodoReminders.enabled(this)){permissionStage=-1;return;}
+            if(permissionStage==1){permissionStage=2;
                 if(permissionAlarm&&Build.VERSION.SDK_INT>=31&&!TodoReminders.exact(this)){startActivityForResult(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())),204);return;}
             }
             if(permissionStage==2){permissionStage=3;if(permissionAlarm&&Build.VERSION.SDK_INT>=34&&!getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent()){startActivityForResult(new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,Uri.parse("package:"+getPackageName())),204);return;}}
             permissionStage=-1;TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);
+            if(permissionAlarm)web.evaluateJavascript("window.checkAlarmReadiness&&window.checkAlarmReadiness()",null);
         }catch(Exception error){permissionStage=-1;notice("请在手机设置中允许通知、闹钟和锁屏提醒");}
     }
     private void notice(String message){web.evaluateJavascript("window.nativeNotice("+JSONObject.quote(message)+")",null);}
@@ -203,10 +227,10 @@ public class MainActivity extends Activity {
     }
     @Override public void onBackPressed(){web.evaluateJavascript("window.handleBack && window.handleBack()",value->{if(!"true".equals(value))super.onBackPressed();});}
     @Override protected void onPause(){super.onPause();web.onPause();}
-    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==203){if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)advancePermissions();else permissionStage=-1;return;}if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==203){advancePermissions();return;}if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
     private String widgetAction(Intent intent){String action=intent.getAction();return AgendaWidget.ADD.equals(action)?"add":AgendaWidget.TODOS.equals(action)?"todos":AgendaWidget.SCHEDULE.equals(action)?"schedule":AgendaWidget.ALL.equals(action)?"agenda":null;}
     private void dispatchWidgetAction(){String action=widgetAction;widgetAction=null;web.evaluateJavascript("window.openWidgetAction&&window.openWidgetAction("+JSONObject.quote(action)+")",null);}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);widgetAction=widgetAction(intent);if(widgetAction!=null&&webReady)dispatchWidgetAction();}
-    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);AgendaWidget.refresh(this);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();window.appEntered&&window.appEntered();",null);}}
+    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);AgendaWidget.refresh(this);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();window.refreshAlarmSettings&&window.refreshAlarmSettings();window.appEntered&&window.appEntered();",null);}}
     @Override protected void onDestroy(){if(online!=null)online.destroy();if(web!=null){web.removeJavascriptInterface("Android");web.removeJavascriptInterface("Online");web.destroy();}super.onDestroy();}
 }
