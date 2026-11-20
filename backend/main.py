@@ -170,6 +170,18 @@ def register(data: Registration, session: Session = Depends(db)):
         raise HTTPException(409, "用户名已使用")
     from .security import Recovery
     session.add(Recovery(user_id=user.id))
+
+    #新注册用户奖励100星币
+    from .stars import change
+    change(
+        session,
+        user.id,
+        amount=100,
+        key=digest(f"register_bonus:{user.id}"),
+        kind="register_bonus",
+        note="注册奖励",
+    )
+
     return tokens(session, user)
 
 
