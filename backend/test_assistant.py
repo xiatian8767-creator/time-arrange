@@ -25,7 +25,9 @@ def client(tmp_path,monkeypatch):
 def account(c,name='aiuser',coins=100):
     r=c.post('/api/v1/auth/register',json={'username':name,'nickname':name,'password':'test-password-1234'});assert r.status_code==201,r.text
     data=r.json();uid=data['user']['userId']
-    with Session(m.engine) as s:s.add(Wallet(user_id=uid,balance=coins));s.commit()
+    with Session(m.engine) as s:
+        s.get(Wallet, uid).balance = coins
+        s.commit()
     return uid,{'Authorization':'Bearer '+data['accessToken']}
 
 def admin(c):
@@ -83,7 +85,10 @@ def test_success_idempotent_and_owner_scoped(client,monkeypatch):
     assert c.get('/api/v1/ai/requests/'+body['requestId'],headers=h).json()==r.json()
     assert c.get('/api/v1/ai/requests/'+body['requestId'],headers=oh).status_code==404
     assert c.post('/api/v1/ai/chat',headers=h,json={**body,'messages':[{'role':'user','content':'changed'}]}).status_code==409
-    tx=c.get('/api/v1/stars/transactions',headers=h).json()['transactions'];assert len(tx)==1 and tx[0]['kind']=='ai_chat' and tx[0]['amount']==-2
+    tx=c.get('/api/v1/stars/transactions',headers=h).json()['transactions']
+    assert sorted((row['kind'], row['amount']) for row in tx) == [
+        ('ai_chat', -2), ('register_bonus', 100),
+    ]
     assert 'sk-test' not in c.get('/admin/api/assistant/usage').text
 
 @pytest.mark.parametrize('kind',['exception','usage','length','overrun'])
@@ -99,7 +104,8 @@ def test_failed_calls_refund_and_no_transaction(client,monkeypatch,kind):
     monkeypatch.setattr(a,'provider_call',fake)
     r=c.post('/api/v1/ai/chat',headers=h,json=payload());assert r.status_code==502,r.text
     assert balance(c,h)==100 and 'sensitive' not in r.text
-    assert c.get('/api/v1/stars/transactions',headers=h).json()['transactions']==[]
+    tx=c.get('/api/v1/stars/transactions',headers=h).json()['transactions']
+    assert [(row['kind'], row['amount']) for row in tx] == [('register_bonus', 100)]
 
 def test_unavailable_balance_and_invalid_images_never_call_model(client,monkeypatch):
     c=client;uid,h=account(c,coins=0);csrf=admin(c)
