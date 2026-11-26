@@ -42,8 +42,8 @@ public final class AgendaWidget extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widget_add,open(c,ADD));views.setOnClickPendingIntent(R.id.widget_root,open(c,SCHEDULE));
         views.setOnClickPendingIntent(R.id.widget_all,open(c,ALL));
         Bundle options=manager.getAppWidgetOptions(id);int height=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,350);
-        // Match the fixed 44dp rows and reserve room for the header and footer.
-        int visible=Math.min(entries.size(),Math.min(5,Math.max(1,(height-84)/44)));
+        // Leave room for the launcher padding as well as the header and footer.
+        int visible=Math.min(entries.size(),Math.min(5,Math.max(1,(height-100)/44)));
         views.removeAllViews(R.id.widget_rows);
         // With many overdue tasks, show the most recently missed ones first in the selection.
         int overdue=0;while(overdue<entries.size()&&!entries.get(overdue).course&&entries.get(overdue).start<now)overdue++;
