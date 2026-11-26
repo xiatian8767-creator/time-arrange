@@ -11,7 +11,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
-import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -27,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private WebView web;
+    private WebEdgeInsets edgeInsets;
     private SharedPreferences prefs;
     private OnlineBridge online;
     private String pendingExport;
@@ -51,8 +51,7 @@ public class MainActivity extends Activity {
         WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0);
         frame.addView(web,new FrameLayout.LayoutParams(-1,-1));
         setContentView(frame);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | (Build.VERSION.SDK_INT>=26?View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));
-        if(Build.VERSION.SDK_INT>=35){frame.setOnApplyWindowInsetsListener((v,insets)->{android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());v.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets;});}
+        edgeInsets=new WebEdgeInsets(getWindow(),frame,web,false);
         web.setBackgroundColor(Color.rgb(247,245,239));
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(false);
@@ -64,7 +63,7 @@ public class MainActivity extends Activity {
         online=new OnlineBridge(this,web,prefs);
         web.addJavascriptInterface(online,"Online");
         web.setWebViewClient(new WebViewClient(){
-            @Override public void onPageFinished(WebView view,String url){webReady=true;if(openTodos){openTodos=false;view.evaluateJavascript("window.showPage && window.showPage('todos')",null);}if(widgetAction!=null){dispatchWidgetAction();}}
+            @Override public void onPageFinished(WebView view,String url){edgeInsets.applyToPage();webReady=true;if(openTodos){openTodos=false;view.evaluateJavascript("window.showPage && window.showPage('todos')",null);}if(widgetAction!=null){dispatchWidgetAction();}}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return !HOME.equals(request.getUrl().toString());}
             @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !HOME.equals(url);}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){

@@ -10,6 +10,7 @@ import java.io.ByteArrayInputStream;
 /** Offline alarm surface: only the triggered task titles and alarm times are exposed. */
 public class AlarmActivity extends Activity {
     private WebView web;
+    private WebEdgeInsets edgeInsets;
     private final BroadcastReceiver events=new BroadcastReceiver(){public void onReceive(Context c,Intent i){if(i.getAction().endsWith("STOPPED"))finish();else refresh();}};
     @Override public void onCreate(Bundle state){super.onCreate(state);
         if(TodoAlarms.active(this).length()==0){finish();return;}
@@ -22,12 +23,12 @@ public class AlarmActivity extends Activity {
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return true;}
             @Override public boolean shouldOverrideUrlLoading(WebView v,String u){return true;}
-            @Override public void onPageFinished(WebView v,String u){refresh();}
+            @Override public void onPageFinished(WebView v,String u){edgeInsets.applyToPage();refresh();}
             @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){android.net.Uri u=r.getUrl();String p=u.getPath();if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&p!=null&&p.startsWith("/assets/")&&!p.contains(".."))try{String f=p.substring(8),mime=f.endsWith(".html")?"text/html":f.endsWith(".css")?"text/css":f.endsWith(".js")?"application/javascript":f.endsWith(".png")?"image/png":"application/octet-stream";return new WebResourceResponse(mime,"UTF-8",getAssets().open(f));}catch(Exception ignored){}return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
         });
         android.widget.FrameLayout frame=new android.widget.FrameLayout(this);frame.addView(web);setContentView(frame);
         if(Build.VERSION.SDK_INT>=31)try{getWindow().setBackgroundBlurRadius(45);}catch(RuntimeException ignored){}
-        if(Build.VERSION.SDK_INT>=35)frame.setOnApplyWindowInsetsListener((v,insets)->{android.graphics.Insets b=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());v.setPadding(b.left,b.top,b.right,b.bottom);return insets;});
+        edgeInsets=new WebEdgeInsets(getWindow(),frame,web,true);
         IntentFilter f=new IntentFilter("cn.xingke.timetable.ALARM_STOPPED");f.addAction("cn.xingke.timetable.ALARM_UPDATED");
         if(Build.VERSION.SDK_INT>=33)registerReceiver(events,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(events,f);
         web.loadUrl("https://appassets.androidplatform.net/assets/alarm.html");
