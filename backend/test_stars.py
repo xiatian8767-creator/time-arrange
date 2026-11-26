@@ -16,6 +16,61 @@ from backend import main as m
 from backend.admin import Admin
 from backend.stars import Wallet, Transaction, StarMessage, Redemption
 
+def test_register_bonus(client):
+    body = {
+        "username": "bonususer",
+        "nickname": "奖励测试",
+        "password": "test-password-1234",
+    }
+
+    response = client.post("/api/v1/auth/register", json=body)
+    assert response.status_code == 201, response.text
+    headers = {"Authorization": "Bearer " + response.json()["accessToken"]}
+
+    duplicate = client.post("/api/v1/auth/register", json=body)
+    assert duplicate.status_code == 409, duplicate.text
+
+    assert balance(client, headers) == 100
+    history = client.get("/api/v1/stars/transactions", headers=headers)
+    assert history.status_code == 200, history.text
+    assert [(row["kind"], row["amount"]) for row in history.json()["transactions"]] == [
+        ("register_bonus", 100),
+    ]
+
+    login = client.post("/api/v1/auth/login", json={
+        "username": body["username"], "password": body["password"],
+    })
+    assert login.status_code == 200, login.text
+    login_headers = {"Authorization": "Bearer " + login.json()["accessToken"]}
+    assert balance(client, login_headers) == 100
+    assert client.get("/api/v1/stars/transactions", headers=login_headers).json() == history.json()
+
+
+def test_register_rolls_back_when_bonus_fails(client, monkeypatch):
+    from backend import stars
+
+    change = stars.change
+
+    def fail_after_credit(*args, **kwargs):
+        change(*args, **kwargs)
+        raise RuntimeError("simulated credit failure")
+
+    body = {
+        "username": "retrybonus",
+        "nickname": "奖励回滚测试",
+        "password": "test-password-1234",
+    }
+    with monkeypatch.context() as patch:
+        patch.setattr(stars, "change", fail_after_credit)
+        with pytest.raises(RuntimeError, match="simulated credit failure"):
+            client.post("/api/v1/auth/register", json=body)
+
+    with Session(m.engine) as session:
+        for model in (m.User, Wallet, Transaction):
+            assert session.scalar(select(func.count()).select_from(model)) == 0
+
+    assert client.post("/api/v1/auth/register", json=body).status_code == 201
+
 @pytest.fixture
 def client():
     original=m.engine
@@ -50,28 +105,31 @@ def picture():
 
 def test_wallet_gift_atomic_idempotent_and_scope(client):
     c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');z,zh=user(c,'outsider');csrf=admin(c);bind(a,b)
-    assert balance(c,ah)==0
+    assert balance(c,ah)==100
     body={'requestId':key(),'amount':10}
     assert c.post('/admin/api/users/'+a+'/stars',json=body).status_code==403
     post(c,'/admin/api/users/'+a+'/stars',body,csrf);post(c,'/admin/api/users/'+a+'/stars',body,csrf)
-    assert balance(c,ah)==10
+    assert balance(c,ah)==110
     gift={'requestId':key(),'partnerId':b,'amount':4,'note':'你好'}
     post(c,'/api/v1/stars/gift',gift,ah);post(c,'/api/v1/stars/gift',gift,ah)
-    assert (balance(c,ah),balance(c,bh))==(6,4)
+    assert (balance(c,ah),balance(c,bh))==(106,104)
     assert c.post('/api/v1/stars/gift',headers=ah,json={**gift,'amount':5}).status_code==409
-    assert c.post('/api/v1/stars/gift',headers=ah,json={**gift,'requestId':key(),'amount':7}).status_code==409
+    assert c.post('/api/v1/stars/gift',headers=ah,json={**gift,'requestId':key(),'amount':107}).status_code==409
     assert c.post('/api/v1/stars/gift',headers=zh,json={**gift,'requestId':key()}).status_code==409
     for n in [0,-1,1.5,True]:assert c.post('/api/v1/stars/gift',headers=ah,json={**gift,'requestId':key(),'amount':n}).status_code==422
-    assert balance(c,ah)==6
-    assert len(c.get('/api/v1/stars/transactions',headers=bh).json()['transactions'])==1
+    assert balance(c,ah)==106
+    history = c.get('/api/v1/stars/transactions', headers=bh).json()['transactions']
+    assert sorted((row['kind'], row['amount']) for row in history) == [
+        ('gift_in', 4), ('register_bonus', 100),
+    ]
 
 def test_codes_single_reusable_and_disabled(client):
     c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');csrf=admin(c)
     payload={'requestId':key(),'count':2,'amount':7,'reusable':False}
     codes=post(c,'/admin/api/star-codes',payload,csrf)['codes'];assert post(c,'/admin/api/star-codes',payload,csrf)['codes']==codes
     body={'requestId':key(),'code':codes[0].lower()}
-    assert post(c,'/api/v1/stars/redeem',body,ah)['balance']==7
-    assert post(c,'/api/v1/stars/redeem',body,ah)['balance']==7
+    assert post(c,'/api/v1/stars/redeem',body,ah)['balance']==107
+    assert post(c,'/api/v1/stars/redeem',body,ah)['balance']==107
     assert c.post('/api/v1/stars/redeem',headers=bh,json={**body,'requestId':key()}).status_code==409
     reusable=post(c,'/admin/api/star-codes',{'requestId':key(),'count':1,'amount':3,'reusable':True},csrf)['codes'][0]
     for h in [ah,bh]:post(c,'/api/v1/stars/redeem',{'requestId':key(),'code':reusable},h)
@@ -79,7 +137,7 @@ def test_codes_single_reusable_and_disabled(client):
     row=next(r for r in c.get('/admin/api/star-codes').json()['codes'] if r['code']==codes[1])
     post(c,'/admin/api/star-codes/'+row['id'],{'enabled':False},csrf)
     assert c.post('/api/v1/stars/redeem',headers=ah,json={'requestId':key(),'code':codes[1]}).status_code==422
-    assert balance(c,ah)==10 and balance(c,bh)==3
+    assert balance(c,ah)==110 and balance(c,bh)==103
 
 def test_profile_detail_backup_and_scheduled_message(client):
     c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');csrf=admin(c);bind(a,b);grant(c,a,csrf)
@@ -90,15 +148,15 @@ def test_profile_detail_backup_and_scheduled_message(client):
     backup=c.get('/admin/api/users/'+a+'/backup');assert backup.json()['version']==2 and 'password' not in backup.text
     body={'requestId':key(),'partnerId':b,'message':{'text':'你好 <script>alert(1)</script>','image':picture(),'startsAt':int(time.time()*1000)+60000}}
     post(c,'/api/v1/stars/send',body,ah);post(c,'/api/v1/stars/send',body,ah)
-    assert balance(c,ah)==9
+    assert balance(c,ah)==109
     assert c.get('/api/v1/campaigns',headers=bh).json()['campaign'] is None
     templates=c.get('/api/v1/stars/templates',headers=ah).json()['templates'];assert len(templates)==1
     page=c.get('/updates/messages/'+templates[0]['id']+'/');assert '&lt;script&gt;' in page.text and '<script>' not in page.text
     invalid={**body,'requestId':key(),'message':{'text':'bad','image':'data:image/jpeg;base64,broken'}}
     assert c.post('/api/v1/stars/send',headers=ah,json=invalid).status_code==422
-    assert balance(c,ah)==9
+    assert balance(c,ah)==109
     post(c,'/api/v1/stars/send',{**body,'requestId':key(),'message':{'text':'复用','templateId':templates[0]['id']}},ah)
-    assert balance(c,ah)==8
+    assert balance(c,ah)==108
     assert c.get('/api/v1/campaigns',headers=bh).json()['campaign']
     assert c.get('/api/v1/campaigns',headers=ah).json()['campaign'] is None
     post(c,'/api/v1/stars/profile',{'avatar':None},ah);assert c.get('/api/v1/stars',headers=ah).json()['user']['avatar'] is None
@@ -166,16 +224,18 @@ def test_update_campaign_follows_installed_version_and_reopens(client):
 
 @pytest.mark.skipif(not os.environ.get('STAR_TEST_DATABASE_URL'),reason='PostgreSQL concurrency test requires isolated DB')
 def test_concurrent_balance_and_redeem(client):
-    c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');csrf=admin(c);bind(a,b);grant(c,a,csrf,n=5)
+    c=client;a,ah=user(c,'alice');b,bh=user(c,'bob');csrf=admin(c);bind(a,b)
+    # Leave Alice with five coins so concurrent requests still hit insufficient balance.
+    post(c, '/api/v1/stars/gift', {'requestId': key(), 'partnerId': b, 'amount': 95}, ah)
     def gift(_):return c.post('/api/v1/stars/gift',headers=ah,json={'requestId':key(),'partnerId':b,'amount':1}).status_code
     with ThreadPoolExecutor(max_workers=8) as pool:results=list(pool.map(gift,range(12)))
     assert results.count(200)==5 and results.count(409)==7
-    assert balance(c,ah)==0 and balance(c,bh)==5
+    assert balance(c,ah)==0 and balance(c,bh)==200
     code=post(c,'/admin/api/star-codes',{'requestId':key(),'amount':7,'count':1},csrf)['codes'][0]
     def redeem(h):return c.post('/api/v1/stars/redeem',headers=h,json={'requestId':key(),'code':code}).status_code
     with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(redeem,[ah,bh]))
     assert sorted(results)==[200,409]
-    assert balance(c,ah)+balance(c,bh)==12
+    assert balance(c,ah)+balance(c,bh)==207
 
 def test_admin_grant_popup_and_backup_access(client):
     c=client;a,ah=user(c,'alice');csrf=admin(c)
@@ -200,4 +260,4 @@ def test_custom_gift_picture_and_template(client):
     page=c.get(urlsplit(campaign['url']).path)
     assert '一起努力 ✨' in page.text and '+5' in page.text and 'alice' in page.text and '/asset' in page.text
     assert campaign['width']==68 and campaign['height']==48
-    assert balance(c,ah)==5 and balance(c,bh)==5
+    assert balance(c,ah)==105 and balance(c,bh)==105
