@@ -21,6 +21,7 @@ function closeModal(){if(window.authLocked||$('modal').hidden)return false;$('mo
 const navPages=['schedule','todos','settings'];
 const pageElement=name=>$(name==='todos'?'todo-page':name+'-page');
 const glassNav=document.querySelector('.glass-nav');
+const pageScroll=document.querySelector('main');
 const navMotion={duration:430,easing:'cubic-bezier(.24,.72,.24,1)'};
 let clearPageMotion=()=>{};
 function showPage(name){
@@ -41,7 +42,8 @@ function showPage(name){
   if(next==='todos')renderTodos();
   else if(next==='schedule')tick();
   glassNav.style.setProperty('--nav-index',index);
-  window.scrollTo(0,0);
+  // Reset the content scroller independently of the fixed navigation layer.
+  pageScroll.scrollTop=0;
   if(!animate)return;
   outgoing.classList.add('glass-page-exit');
   outgoing.inert=true;

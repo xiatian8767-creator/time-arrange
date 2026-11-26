@@ -96,7 +96,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">星小助<small>使用星币对话</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit '+(native?.versionName?.()||'3.4beta.6')+' · 探索版';
+    document.querySelector('.version').textContent='Star Orbit '+(native?.versionName?.()||'3.4beta.7')+' · 探索版';
 
   };
   function accountSettings(){

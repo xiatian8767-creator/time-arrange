@@ -5,14 +5,17 @@
   bottom: calc(11px + var(--orbit-safe-bottom));
   padding: 4px 10px;
   gap: 0;
+  transition: none;
+  transform: translateZ(0);
   border: 1px solid #ffffff8f;
   border-radius: 36px;
   background: linear-gradient(155deg, #ffffff70, #e9eff436 70%, #ffffff54);
   box-shadow: inset 0 1px 1px #ffffffca, inset 0 -2px 7px #ffffff62, 0 7px 22px #202d4836;
-  -webkit-backdrop-filter: blur(11px) saturate(160%);
-  backdrop-filter: blur(11px) saturate(160%);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+  backdrop-filter: blur(8px) saturate(150%);
 }
 .glass-nav button { color: #253349; z-index: 1; text-shadow: 0 1px 4px #ffffffc4, 0 0 9px #ffffffbc; }
+.glass-nav button:active { transform: none; }
 .glass-nav-track { position: absolute; inset: 4px 10px; pointer-events: none; }
 .glass-nav-lens {
   position: absolute; inset: 0 auto 0 0; width: calc(100% / 3);
@@ -42,8 +45,14 @@
   pointer-events: none;
   background: #f6f5f1;
 }
-body { overflow-x: clip; }
-main { padding-bottom: calc(94px + var(--orbit-safe-bottom)); }
+html, body { height: 100%; overflow: hidden; }
+body > main {
+  position: absolute;
+  inset: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(94px + var(--orbit-safe-bottom));
+}
 .modal .sheet { padding-bottom: calc(23px + var(--orbit-safe-bottom)); }
 #ai-panel { padding-bottom: calc(16px + var(--orbit-safe-bottom)); }
 .toast { bottom: calc(88px + var(--orbit-safe-bottom)); }

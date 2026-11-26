@@ -5,7 +5,7 @@
 ## 官网当前版本
 
 - 稳定版：3.4beta.3（versionCode 30），支持今日安排桌面小组件。
-- 探索版：3.4beta.6（versionCode 33），更新液态玻璃导航与页面转场，主界面和闹钟页支持底部沉浸布局。
+- 探索版：3.4beta.7（versionCode 34），修复液态玻璃导航切页时的底栏抖动。
 - [官网](http://startimetable.xyz/) · [GitHub Releases](https://github.com/xiatian8767-creator/time-arrange/releases)
 - 历史版本、更新记录和安装包以 Git 历史、GitHub Releases 为准，不在仓库重复维护逐版本文档或源码压缩包。
 
