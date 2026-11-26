@@ -17,8 +17,8 @@
   let pendingWidgetAction='';
   function showWidgetAgenda(){
     const now=Date.now(),today=startOfDay(now),d=new Date(now),weekday=(d.getDay()+6)%7+1,tomorrow=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1).getTime(),at=hm=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),Number(hm.slice(0,2)),Number(hm.slice(3))).getTime(),items=[];
-    for(const c of state.courses){if(c.day!==weekday)continue;const from=state.slots.find(s=>s.id===c.start),to=state.slots.find(s=>s.id===c.end);if(!from||!to||at(to.end)<=now)continue;items.push({time:at(from.start),title:c.name,label:'课程',detail:(c.room?c.room+' · ':'')+from.start+'–'+to.end+(at(from.start)<=now?' · 正在上课':' · 即将开始'),course:true});}
-    for(const t of state.todos)if(!t.completed&&t.dueAt>=today&&t.dueAt<tomorrow)items.push({time:t.dueAt,title:t.title,label:'待办',detail:todoDateLabel(t.dueAt)+(t.dueAt<now?' · 已逾期':' · 待完成'),id:t.id});
+    for(const c of state.courses){if(c.day!==weekday)continue;const from=state.slots.find(s=>s.id===c.start),to=state.slots.find(s=>s.id===c.end);if(!from||!to)continue;items.push({time:at(from.start),title:c.name,label:'课程',detail:(c.room?c.room+' · ':'')+from.start+'–'+to.end+(at(to.end)<=now?' · 已结束':at(from.start)<=now?' · 正在上课':' · 即将开始'),course:true});}
+    for(const t of state.todos)if(t.dueAt>0&&t.dueAt<tomorrow&&(!t.completed||t.dueAt>=today))items.push({time:t.dueAt,title:t.title,label:'待办',detail:todoDateLabel(t.dueAt)+(t.completed?' · 已完成':t.dueAt<now?' · 已逾期':' · 待完成'),id:t.id});
     items.sort((a,b)=>a.time-b.time);showModal('今日安排','<p class="hint">'+esc(d.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'}))+'</p><div id="widget-agenda-list">'+(items.length?items.map(item=>'<button type="button" class="setting-action widget-agenda-item '+(item.course?'is-course':'is-todo')+'" '+(item.id?'data-widget-todo="'+esc(item.id)+'"':'data-widget-course')+'><strong>'+esc(item.title)+'</strong><small>'+esc(item.detail)+'</small><span>'+item.label+'</span></button>').join(''):'<p class="hint">今天暂无课程和待办。</p>')+'</div>');
     $('widget-agenda-list').onclick=e=>{const todo=e.target.closest('[data-widget-todo]');if(todo){closeModal();showPage('todos');editTodo(todo.dataset.widgetTodo);}else if(e.target.closest('[data-widget-course]')){closeModal();showPage('schedule');}};
   }
@@ -96,7 +96,7 @@
   window.extendSettings=()=>{
     $('dialog-body').insertAdjacentHTML('afterbegin','<button class="setting-action" id="account-settings">'+(cloud.user?'账号与同步':'注册 / 登录')+'<small>'+(cloud.user?esc(cloud.user.nickname)+' · '+esc(syncStatus):'按需联网，跨设备恢复课表和私人待办')+'</small></button><button class="setting-action" id="ai-settings">星小助<small>使用星币对话</small></button>');
     $('account-settings').onclick=accountSettings;$('ai-settings').onclick=aiSettings;
-    document.querySelector('.version').textContent='Star Orbit 3.4beta.1 · 探索版';
+    document.querySelector('.version').textContent='Star Orbit '+(native?.versionName?.()||'3.4beta.5')+' · 探索版';
 
   };
   function accountSettings(){

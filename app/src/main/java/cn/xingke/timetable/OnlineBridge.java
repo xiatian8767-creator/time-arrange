@@ -112,6 +112,10 @@ public final class OnlineBridge {
                 }
                 connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(endpoint.endsWith("/api/v1/ai/chat")?320000:20000);
                 connection.setRequestMethod(method);connection.setRequestProperty("Accept","application/json");
+                if(connection.getURL().getPath().equals("/api/v1/campaigns")){
+                    int code=activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionCode;
+                    connection.setRequestProperty("X-StarOrbit-Version-Code",Integer.toString(code));
+                }
                 if(!auth.isEmpty())connection.setRequestProperty("Authorization","Bearer "+auth);
                 if(req.has("body")){
                     byte[] data=req.getJSONObject("body").toString().getBytes(StandardCharsets.UTF_8);
@@ -139,6 +143,10 @@ public final class OnlineBridge {
     }
     @JavascriptInterface public void pickPhoto(boolean camera){activity.runOnUiThread(()->activity.pickPhoto(camera));}
     @JavascriptInterface public void pickStarPhoto(){activity.runOnUiThread(()->activity.pickStarPhoto());}
+    @JavascriptInterface public String versionName(){
+        try{return activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName;}
+        catch(android.content.pm.PackageManager.NameNotFoundException e){return "";}
+    }
     @JavascriptInterface public void showCampaign(String raw){if(raw!=null&&raw.length()<10000)activity.runOnUiThread(()->campaigns.show(raw));}
     void destroy(){campaigns.destroy();network.shutdownNow();}
 }

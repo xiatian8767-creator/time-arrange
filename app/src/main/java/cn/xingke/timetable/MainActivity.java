@@ -2,6 +2,9 @@ package cn.xingke.timetable;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
@@ -226,11 +229,28 @@ public class MainActivity extends Activity {
         }catch(Exception e){notice("文件操作失败，请检查文件和存储位置");}
     }
     @Override public void onBackPressed(){web.evaluateJavascript("window.handleBack && window.handleBack()",value->{if(!"true".equals(value))super.onBackPressed();});}
-    @Override protected void onPause(){super.onPause();web.onPause();}
+    private String openedAlarm="";
+    private final BroadcastReceiver alarmEvents=new BroadcastReceiver(){
+        @Override public void onReceive(Context context,Intent intent){showRingingAlarm();}
+    };
+    private void showRingingAlarm(){
+        JSONObject item=TodoAlarms.active(this).optJSONObject(0);
+        if(item==null){openedAlarm="";return;}
+        String key=item.optString("id")+":"+item.optLong("at");
+        if(!AlarmRingService.running||openedAlarm.equals(key)||isFinishing())return;
+        openedAlarm=key;
+        startActivity(new Intent(this,AlarmActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP));
+    }
+    @Override protected void onPause(){unregisterReceiver(alarmEvents);super.onPause();web.onPause();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==203){advancePermissions();return;}if(request==103){TodoReminders.reconcile(this,true);web.evaluateJavascript("typeof renderTodos === 'function' && renderTodos()",null);}}
     private String widgetAction(Intent intent){String action=intent.getAction();return AgendaWidget.ADD.equals(action)?"add":AgendaWidget.TODOS.equals(action)?"todos":AgendaWidget.SCHEDULE.equals(action)?"schedule":AgendaWidget.ALL.equals(action)?"agenda":null;}
     private void dispatchWidgetAction(){String action=widgetAction;widgetAction=null;web.evaluateJavascript("window.openWidgetAction&&window.openWidgetAction("+JSONObject.quote(action)+")",null);}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if("cn.xingke.timetable.OPEN_TODOS".equals(intent.getAction()))web.evaluateJavascript("window.showPage && window.showPage('todos')",null);widgetAction=widgetAction(intent);if(widgetAction!=null&&webReady)dispatchWidgetAction();}
-    @Override protected void onResume(){super.onResume();TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);AgendaWidget.refresh(this);if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();window.refreshAlarmSettings&&window.refreshAlarmSettings();window.appEntered&&window.appEntered();",null);}}
+    @Override protected void onResume(){super.onResume();
+        IntentFilter filter=new IntentFilter("cn.xingke.timetable.ALARM_UPDATED");
+        filter.addAction("cn.xingke.timetable.ALARM_STOPPED");
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(alarmEvents,filter,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(alarmEvents,filter);
+        TodoReminders.reconcile(this,true);TodoAlarms.reconcile(this,false);AgendaWidget.refresh(this);showRingingAlarm();
+        if(web!=null){web.onResume();web.evaluateJavascript("if(typeof tick === 'function')tick();if(typeof renderTodos === 'function')renderTodos();window.refreshAlarmSettings&&window.refreshAlarmSettings();window.appEntered&&window.appEntered();",null);}}
     @Override protected void onDestroy(){if(online!=null)online.destroy();if(web!=null){web.removeJavascriptInterface("Android");web.removeJavascriptInterface("Online");web.destroy();}super.onDestroy();}
 }

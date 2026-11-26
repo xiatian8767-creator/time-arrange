@@ -5,6 +5,7 @@ import base64
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 import pytest
 from PIL import Image
 from fastapi.testclient import TestClient
@@ -135,6 +136,33 @@ def test_campaign_reset_and_every_open(client):
     first=c.get('/api/v1/campaigns',headers=ah).json();post(c,path,{},ah)
     second=c.get('/api/v1/campaigns',headers=ah).json();assert first['period']!=second['period'] and second['campaign']
     assert c.get('/api/v1/campaigns?skip='+row['id'],headers=ah).json()['campaign'] is None
+
+def test_update_campaign_follows_installed_version_and_reopens(client):
+    c=client
+    uid,old=user(c,'update_user')
+    _,other=user(c,'update_other')
+    csrf=admin(c)
+    url='https://downloads.example.com/StarOrbit-3.4beta.5.apk'
+    image=post(c,'/admin/api/campaign-images',{'image':picture()},csrf)['path']+'asset'
+    update={'targetCode':32,'image':image,'boxes':[{'text':'<新版本>','x':5,'y':8,'width':80,'height':20,'size':7,'color':'#253456','font':'sans'}]}
+    body={'title':'版本更新','url':url,'width':88,'height':65,'audience':'custom','userIds':[uid],'startsAt':0,'frequency':'once','update':update}
+    row=post(c,'/admin/api/campaigns',body,csrf)
+    assert row['frequency']=='always'
+    first=c.get('/api/v1/campaigns',headers=old).json()
+    item=first['campaign']
+    assert item['id']==row['id'] and 'update' not in item
+    page=c.get(urlsplit(item['url']).path)
+    assert page.status_code==200 and 'text/html' in page.headers['content-type']
+    assert '&lt;新版本&gt;' in page.text and url in page.text and image in page.text
+    post(c,f"/api/v1/campaigns/{row['id']}/displayed",{'period':first['period']},old)
+    assert c.get('/api/v1/campaigns',headers=old).json()['period']!=first['period']
+    assert c.get('/api/v1/campaigns',headers=other).json()['campaign'] is None
+    for version in ('32','33'):
+        assert c.get('/api/v1/campaigns',headers={**old,'X-StarOrbit-Version-Code':version}).json()['campaign'] is None
+    assert c.get('/api/v1/campaigns',headers={**old,'X-StarOrbit-Version-Code':'31'}).json()['campaign']
+    assert c.post('/admin/api/campaigns',json={**body,'url':'https://downloads.example.com/page'},headers=csrf).status_code==422
+    post(c,f"/admin/api/campaigns/{row['id']}/delete",{'revision':row['revision']},csrf)
+    assert c.get(urlsplit(item['url']).path).status_code==404
 
 @pytest.mark.skipif(not os.environ.get('STAR_TEST_DATABASE_URL'),reason='PostgreSQL concurrency test requires isolated DB')
 def test_concurrent_balance_and_redeem(client):

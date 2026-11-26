@@ -42,10 +42,14 @@ public final class AgendaWidget extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widget_add,open(c,ADD));views.setOnClickPendingIntent(R.id.widget_root,open(c,SCHEDULE));
         views.setOnClickPendingIntent(R.id.widget_all,open(c,ALL));
         Bundle options=manager.getAppWidgetOptions(id);int height=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,350);
-        int visible=Math.min(entries.size(),height<260?1:height<330?2:3);
+        // Match the fixed 44dp rows and reserve room for the header and footer.
+        int visible=Math.min(entries.size(),Math.min(5,Math.max(1,(height-84)/44)));
         views.removeAllViews(R.id.widget_rows);
+        // With many overdue tasks, show the most recently missed ones first in the selection.
+        int overdue=0;while(overdue<entries.size()&&!entries.get(overdue).course&&entries.get(overdue).start<now)overdue++;
+        int offset=Math.max(0,overdue-visible);
         for(int i=0;i<visible;i++){
-            WidgetAgenda.Entry entry=entries.get(i);boolean dark=entry.course&&entry.current;
+            WidgetAgenda.Entry entry=entries.get(i+offset);boolean dark=entry.course&&entry.current;
             RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.widget_agenda_row);
             row.setInt(R.id.widget_row,"setBackgroundResource",dark?R.drawable.widget_row_dark:entry.course?R.drawable.widget_row_blue:R.drawable.widget_row_gold);
             row.setInt(R.id.widget_badge,"setBackgroundResource",dark?R.drawable.widget_badge_dark:entry.course?R.drawable.widget_badge_blue:R.drawable.widget_badge_gold);

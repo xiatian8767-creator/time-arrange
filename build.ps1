@@ -25,7 +25,9 @@ New-Item -ItemType Directory -Force -Path $out,$classes,$dex,$generated | Out-Nu
 $res=Join-Path $out 'resources.zip'
 $unsigned=Join-Path $out 'unsigned.apk'
 $aligned=Join-Path $out 'aligned.apk'
-$apk=Join-Path $out $(if($DebugBuild){'StarOrbit-3.4beta.4-debug.apk'}else{'StarOrbit-3.4beta.4.apk'})
+$manifest=[xml](Get-Content -Raw (Join-Path $source 'AndroidManifest.xml'))
+$version=$manifest.DocumentElement.GetAttribute('versionName','http://schemas.android.com/apk/res/android')
+$apk=Join-Path $out ("StarOrbit-$version"+$(if($DebugBuild){'-debug.apk'}else{'.apk'}))
 Run (Join-Path $BuildTools 'aapt2.exe') @('compile','--dir',(Join-Path $source 'res'),'-o',$res)
 $linkArgs=@('link','-o',$unsigned,'-I',$Platform,'--manifest',(Join-Path $source 'AndroidManifest.xml'),'-A',(Join-Path $source 'assets'),'--java',$generated,'--auto-add-overlay',$res)
 if($DebugBuild){$linkArgs+='--debug-mode'}

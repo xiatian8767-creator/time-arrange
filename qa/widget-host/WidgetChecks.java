@@ -25,12 +25,13 @@ public final class WidgetChecks extends Instrumentation {
         Calendar fixed=Calendar.getInstance();fixed.set(2026,9,23,8,30,0);fixed.set(Calendar.MILLISECOND,0);long time=fixed.getTimeInMillis();JSONObject document=fixture(time);
         java.util.List<WidgetAgenda.Entry> entries=WidgetAgenda.read(document.toString(),time);
         if(entries.size()!=5||!entries.get(0).current||!entries.get(0).course||entries.get(1).course||!entries.get(1).title.equals("提交实验报告"))throw new AssertionError("Mixed today agenda ordering");
-        if(WidgetAgenda.read(document.toString(),time+86400000).size()!=1)throw new AssertionError("Midnight filtering");
+        List<WidgetAgenda.Entry> nextDay=WidgetAgenda.read(document.toString(),time+86400000);
+        if(nextDay.size()!=4||!nextDay.get(0).badge.equals("逾期")||!nextDay.get(3).title.equals("明天不显示"))throw new AssertionError("Overdue todos carry forward ahead of today's tasks");
         if(!WidgetAgenda.read("malformed",time).isEmpty())throw new AssertionError("Malformed data fallback");
         document.getJSONArray("slots").getJSONObject(0).put("start","99:99");if(WidgetAgenda.read(document.toString(),time).size()!=4)throw new AssertionError("Bad slot ignored");
         Context c=getTargetContext();String mode=arguments==null?"seed":arguments.getString("mode","seed");JSONObject live=fixture(System.currentTimeMillis());
         if("update".equals(mode))live.getJSONArray("todos").getJSONObject(0).put("completed",true);
         c.getSharedPreferences("star_schedule",0).edit().putString("active-scope","guest".equals(mode)?"guest":"widget-qa-only").putString("data",live.toString()).remove("vault-cloud").commit();AgendaWidget.refresh(c);
-        result.putString("result","PASS native agenda: mixed ordering, ongoing status, completed/next-day filtering, malformed data; mode="+mode);finish(-1,result);
+        result.putString("result","PASS native agenda: mixed ordering, overdue rollover, completed/future filtering, malformed data; mode="+mode);finish(-1,result);
     }catch(Throwable error){result.putString("error",error.toString());finish(0,result);}}
 }

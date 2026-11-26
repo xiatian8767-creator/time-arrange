@@ -2,14 +2,15 @@
 import ipaddress
 import secrets
 import time
+from html import escape
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlsplit
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pathlib import Path
 from pydantic import Field, model_validator
 from sqlalchemy import Column, String, Text, Integer, BigInteger, Boolean, JSON, ForeignKey, select, delete
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, relationship
 from sqlalchemy.exc import IntegrityError
 from . import main as m
 from .admin import authorized, Audit
@@ -17,6 +18,8 @@ from .schema import Strict
 
 router = APIRouter()
 CHINA = timezone(timedelta(hours=8))
+ASSETS = Path(__file__).parent / 'admin-web'
+LEGACY_VERSION_CODE = 31
 
 class CampaignImage(m.Base):
     __tablename__='campaign_images'
@@ -95,6 +98,36 @@ class Campaign(m.Base):
     enabled = Column(Boolean, nullable=False)
     revision = Column(Integer, nullable=False, default=1)
     created_at = Column(BigInteger, nullable=False)
+    release = relationship('CampaignRelease', uselist=False, cascade='all, delete-orphan', lazy='selectin')
+
+class CampaignRelease(m.Base):
+    __tablename__ = 'campaign_releases'
+    campaign_id = Column(String(32), ForeignKey('app_campaigns.id'), primary_key=True)
+    template = Column(JSON, nullable=False)
+
+class UpdateText(Strict):
+    text: str = Field(min_length=1, max_length=500)
+    x: float = Field(ge=0, le=96)
+    y: float = Field(ge=0, le=94)
+    width: float = Field(ge=4, le=100)
+    height: float = Field(ge=6, le=100)
+    size: float = Field(ge=2.5, le=14)
+    color: str = Field(pattern=r'^#[0-9a-fA-F]{6}$')
+    font: str = Field(pattern=r'^(sans|serif|mono)$')
+    bold: bool = False
+    align: str = Field(default='left', pattern=r'^(left|center|right)$')
+
+    @model_validator(mode='after')
+    def within_canvas(self):
+        if self.x + self.width > 100.001 or self.y + self.height > 100.001:
+            raise ValueError('文本框必须位于弹窗内')
+        return self
+
+class UpdateTemplate(Strict):
+    targetCode: int = Field(gt=LEGACY_VERSION_CODE, le=2147483647)
+    background: str = Field(default='#f6f5f1', pattern=r'^#[0-9a-fA-F]{6}$')
+    image: str = Field(default='', pattern=r'^(?:/updates/images/[0-9a-f]{32}/asset)?$')
+    boxes: list[UpdateText] = Field(default_factory=list, max_length=12)
 
 class Receipt(m.Base):
     __tablename__ = 'campaign_receipts'
@@ -123,6 +156,7 @@ class Config(Strict):
     frequency: str = Field(pattern='^(once|daily|weekly|always)$')
     enabled: bool = True
     revision: int = Field(default=0, ge=0)
+    update: UpdateTemplate | None = None
 
     @model_validator(mode='after')
     def valid(self):
@@ -138,6 +172,10 @@ class Config(Strict):
             address = None
         if address is not None and not address.is_global:
             raise ValueError('public URL required')
+        if self.update:
+            if url.scheme != 'https' or not url.path.endswith('.apk'):
+                raise ValueError('请填写 HTTPS APK 直链')
+            self.frequency = 'always'
         self.title = self.title.strip()
         if not self.title or (self.audience == 'custom' and not self.userIds):
             raise ValueError('title and audience required')
@@ -146,7 +184,37 @@ class Config(Strict):
         return self
 
 def info(row):
-    return {'id': row.id, 'title': row.title, 'url': row.url, 'width': row.width, 'height': row.height, 'audience': row.audience, 'userIds': row.user_ids, 'startsAt': row.starts_at, 'frequency': row.frequency, 'enabled': row.enabled, 'revision': row.revision}
+    return {'id': row.id, 'title': row.title, 'url': row.url, 'width': row.width, 'height': row.height, 'audience': row.audience, 'userIds': row.user_ids, 'startsAt': row.starts_at, 'frequency': row.frequency, 'enabled': row.enabled, 'revision': row.revision, 'update': row.release.template if row.release else None}
+
+@router.get('/admin/campaign-update.js',include_in_schema=False)
+def update_editor_script():
+    return FileResponse(ASSETS / 'campaign-update.js', media_type='application/javascript')
+
+@router.get('/updates/release.css',include_in_schema=False)
+def release_style():
+    return FileResponse(ASSETS / 'campaign-update.css', media_type='text/css', headers={'X-Content-Type-Options':'nosniff'})
+
+@router.get('/updates/releases/{campaign_id}/',include_in_schema=False)
+def release_page(campaign_id: str, session: Session=Depends(m.db)):
+    row=session.get(Campaign,campaign_id)
+    if not row or not row.release or not row.enabled or row.starts_at > int(time.time()*1000):
+        raise HTTPException(404,'更新暂未开放')
+    layout=UpdateTemplate.model_validate(row.release.template)
+    boxes=[]
+    for box in layout.boxes:
+        family={'sans':'system-ui','serif':'serif','mono':'monospace'}[box.font]
+        style=(f'left:{box.x}%;top:{box.y}%;width:{box.width}%;height:{box.height}%;'
+               f'--text-size:{box.size};color:{box.color};font-family:{family};'
+               f'font-weight:{700 if box.bold else 400};text-align:{box.align}')
+        boxes.append(f'<div class="release-text" style="{style}">{escape(box.text)}</div>')
+    background=f'<img class="release-bg" alt="" src="{layout.image}">' if layout.image else ''
+    return HTMLResponse(
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>版本更新</title><link rel="stylesheet" href="/updates/release.css"></head>'
+        f'<body class="release-page"><main class="release-card" style="background-color:{layout.background}">'
+        f'{background}<div class="release-copy">{"".join(boxes)}</div>'
+        f'<a class="release-action" href="{escape(row.url,quote=True)}">立即更新</a></main></body></html>',
+        headers={'Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'"})
 
 def period(row, now):
     date = datetime.fromtimestamp(now / 1000, CHINA)
@@ -186,6 +254,8 @@ def require_admin_campaign(session, row):
 @router.post('/admin/api/campaigns')
 @router.post('/admin/api/campaigns/{campaign_id}')
 def save(data: Config, campaign_id: str='', auth=Depends(authorized), session: Session=Depends(m.db)):
+    if data.update and data.update.image and not session.get(CampaignImage, data.update.image.split('/')[3]):
+        raise HTTPException(422, '背景图不存在，请重新上传')
     if data.audience == 'custom':
         found = set(session.scalars(select(m.User.id).where(m.User.id.in_(data.userIds))).all())
         if len(found) != len(data.userIds): raise HTTPException(422, '部分用户 ID 不存在，请核对')
@@ -198,6 +268,12 @@ def save(data: Config, campaign_id: str='', auth=Depends(authorized), session: S
     row.title, row.url, row.width, row.height = data.title, data.url, data.width, data.height
     row.audience, row.user_ids, row.starts_at = data.audience, data.userIds if data.audience == 'custom' else [], data.startsAt
     row.frequency, row.enabled, row.revision = data.frequency, data.enabled, row.revision+1
+    if data.update:
+        if row.release is None:
+            row.release = CampaignRelease()
+        row.release.template = data.update.model_dump()
+    else:
+        row.release = None
     session.add(Audit(id=secrets.token_hex(16), admin=auth.username, user_id='', action='campaign_save', created_at=int(time.time())))
     session.commit()
     return info(row)
@@ -230,13 +306,22 @@ def remove(campaign_id: str, data: DeleteCampaign, auth=Depends(authorized), ses
     return {'ok': True}
 
 @router.get('/api/v1/campaigns')
-def pending(skip: str=Query(default='', max_length=6600), token=Depends(m.authenticated), session: Session=Depends(m.db)):
+def pending(skip: str=Query(default='', max_length=6600), version: int=Header(default=LEGACY_VERSION_CODE, ge=1, le=2147483647, alias='X-StarOrbit-Version-Code'), token=Depends(m.authenticated), session: Session=Depends(m.db)):
     now = int(time.time()*1000)
     skipped=set(skip.split(','))
     for row in session.scalars(select(Campaign).where(Campaign.enabled == True, Campaign.starts_at <= now).order_by(Campaign.starts_at.desc(), Campaign.id)).all():
+        if row.id in skipped or not eligible(row, token.user_id, now):
+            continue
+        if row.release and version >= row.release.template['targetCode']:
+            continue
         key = delivery_key(session,row,now)
-        if row.id not in skipped and eligible(row, token.user_id, now) and (row.frequency=='always' or not session.get(Receipt, (row.id, token.user_id, key))):
-            return {'campaign': {k:v for k,v in info(row).items() if k not in ('userIds', 'audience')}, 'period': key+(':'+secrets.token_hex(4) if row.frequency=='always' else '')}
+        if row.frequency != 'always' and session.get(Receipt, (row.id, token.user_id, key)):
+            continue
+        item = {k:v for k,v in info(row).items() if k not in ('userIds', 'audience','update')}
+        if row.release:
+            from .stars import PUBLIC
+            item['url'] = PUBLIC + '/updates/releases/' + row.id + '/'
+        return {'campaign': item, 'period': key+(':'+secrets.token_hex(4) if row.frequency=='always' else '')}
     return {'campaign': None}
 
 class DisplayReceipt(Strict):
@@ -250,6 +335,8 @@ def displayed(campaign_id: str, data: DisplayReceipt | None = None, token=Depend
     key = delivery_key(session,row,now)
     if data and data.period and data.period!=key and not (row.frequency=='always' and data.period.startswith(key+':')):
         return {'ok':True,'stale':True}
+    if row.release:
+        return {'ok': True, 'period': key}
     session.add(Receipt(campaign_id=row.id, user_id=token.user_id, period=key, displayed_at=now))
     try: session.commit()
     except IntegrityError: session.rollback()

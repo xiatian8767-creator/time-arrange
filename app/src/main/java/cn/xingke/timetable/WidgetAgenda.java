@@ -40,8 +40,10 @@ public final class WidgetAgenda {
             JSONArray todos=doc.optJSONArray("todos");
             if(todos!=null)for(int i=0;i<todos.length();i++){
                 JSONObject todo=todos.optJSONObject(i);if(todo==null||todo.optBoolean("completed"))continue;
-                long due=todo.optLong("dueAt",0);if(due<start||due>=end)continue;
-                Entry e=new Entry();e.start=due;e.end=due;e.title=todo.optString("title","");e.time=format(due);e.secondary="截止";e.badge="待办";
+                long due=todo.optLong("dueAt",0);if(due<=0||due>=end)continue;
+                Entry e=new Entry();e.start=due;e.end=due;e.title=todo.optString("title","");e.time=format(due);
+                e.secondary=due<start?new SimpleDateFormat("M/d",Locale.CHINA).format(due):"截止";
+                e.badge=due<now?"逾期":"待办";
                 String note=todo.optString("note","").trim().replace('\n',' ');e.detail=(note.isEmpty()?"":note+" · ")+(due<now?"已逾期":"待完成");entries.add(e);
             }
         } catch(Exception ignored) { }
